@@ -1,0 +1,6 @@
+.env
+.env.*
+*.bak
+**/tests/_*
+**/tests/*results.json
+**/tests/*.png
