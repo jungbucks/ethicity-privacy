@@ -7,7 +7,7 @@
 (function (root) {
   'use strict';
 
-  var BASE = '../shared/ethicity-elementary-common-v1/effects/audio/';
+  var BASE = 'shared/ethicity-elementary-common-v1/effects/audio/';
   var IDS = ['collect', 'miss', 'tap', 'door', 'win', 'paper', 'retry'];
   var on = false, last = {}, cache = {};
 

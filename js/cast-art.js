@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var BASE = '../shared/ethicity-elementary-common-v1/characters/';
+  var BASE = 'shared/ethicity-elementary-common-v1/characters/';
   var OWN = 'assets/characters-official/';
   var OFFICIAL = { saebom: 1, jiho: 1, haneul: 1, onyu: 1, daon: 1, teacher: 1, robot: 1 };
   var CUSTOM = { minjun: 1, friend: 1 };

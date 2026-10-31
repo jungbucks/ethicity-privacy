@@ -4,3 +4,7 @@
 **/tests/_*
 **/tests/*results.json
 **/tests/*.png
+tests/_shot-*.png
+example/
+CLAUDE.md
+docs/
