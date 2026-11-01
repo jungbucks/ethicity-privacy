@@ -5,7 +5,7 @@
   'use strict';
   var tileSize = 48, images = {}, ground;
   var LEFT = 1, RIGHT = 14, TOP = 11, BOTTOM = 22; // 마당 = [LEFT, RIGHT) × [TOP, BOTTOM) (담장 안쪽)
-  var LAYOUT = { booth: [1.25, 17.4, 12.5, 4.35], boothR: 0.45 };
+  var LAYOUT = { booth: [1.25, 18.6, 12.5, 3.15], boothR: 0.45 };
   function rounded(ctx, x, y, w, h, r) {
     ctx.beginPath(); ctx.roundRect(x*48,y*48,w*48,h*48,r*48);
   }

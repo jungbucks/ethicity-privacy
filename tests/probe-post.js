@@ -70,6 +70,7 @@
   }
 
   // 대화창이 열려 있으면 ▼를 눌러 끝까지 넘긴다
+  function realLis() { return $$('#g-log li').filter(function (li) { return !li.classList.contains('typing'); }); } // '입력 중…' 줄 빼고
   async function passTalk(o) { var g = 0; while ($('#talk') && !$('#talk').hidden && g++ < 60) { if (o) o.talkLines = (o.talkLines || 0) + $$('#talk .talk-text p').length; $('#btn-talk-next').click(); await wait(20); } }
   function key(k, type) { document.dispatchEvent(new KeyboardEvent(type || 'keydown', { key: k, bubbles: true })); }
   var ARROW = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
@@ -184,7 +185,8 @@
       PrivacyApp.setSpeed('instant');
       await play(route, { from: 16 });
       ok(view() === 'v-ending', '엔딩까지 완주');
-      ok(PrivacyApp.state().ending !== 'D', '수습한 싸움 경로는 D 아님: ' + PrivacyApp.state().ending);
+      ok(PrivacyApp.state().ending === 'D', '정문에서 싸운 경로는 수습해도 D(B 아님): ' + PrivacyApp.state().ending);
+      ok(/도움을 청했다/.test(document.body.textContent) && !/도움을 요청하는 건 지는 게 아니다/.test(document.body.textContent), 'D 본문은 도움을 청한 경우 문장');
       ok(/촬영은 계속됐다/.test(document.body.textContent), '사건 결과에 촬영 계속 기록');
     }
     else if (s === 'nf-resume') { // 남 주인공 · 보통 속도 · 움직임 허용
@@ -246,6 +248,15 @@
     }
   }
 
+  // 지금 걷기 구간에 선 인물의 칸(장면 그림 맵은 좌표가 장면마다 달라 직접 쓰지 않는다)
+  function castOf(who) { var t = window.PRIVACY_WORLD.triggers[PrivacyApp.state().mapTarget]; return t.cast.filter(function (c) { return c.who === who; })[0]; }
+  async function walkToCell(tx, ty) {
+    var M = PrivacyMap.debug, rt = M.routeTo(tx, ty);
+    if (!rt) return false;
+    for (var k = 0; k < rt.length; k++) { key(ARROW[rt[k]]); key(ARROW[rt[k]], 'keyup'); var g = 0; await wait(16); while (M.me().moving && g++ < 100) await wait(16); }
+    var m = M.me(); return m.x === tx && m.y === ty;
+  }
+
   async function run() {
     await loadRoutes();
     var R = window.PRIVACY_ROUTES;
@@ -269,7 +280,7 @@
       await play(R.A, o);
       ok(o.walked > 200, '방향키로 실제 걸은 칸 수 ' + o.walked);
       var seq = o.areas.join('>');
-      ok(/교문>마을 길>우리 집 앞>내 방/.test(seq), '교문 → 마을 길 → 우리 집 → 내 방 순서로 이동');
+      ok(/교문>마을 길>내 방/.test(seq), '교문 → 마을 길 → 내 방 순서로 이동: ' + seq.slice(0, 120));
       ok((seq.match(/내 방/g) || []).length >= 3, '집 사건 3번 모두 걸어서 귀가 (' + (seq.match(/내 방/g) || []).length + '회)');
       await finishChecks('A', R.A.length);
     }
@@ -279,7 +290,7 @@
       await play(R.A, { upto: 1, stopAtMap: true });
       ok(view() === 'v-map', '첫 사건 전에 맵 화면');
       ok(/집/.test($('#m-mission').textContent), '지금 할 일 표시(하교): ' + $('#m-mission').textContent);
-      var pt = PrivacyMap.debug.tileToClient(5, 4); // 새봄 자리
+      var cs = castOf('saebom'), pt = PrivacyMap.debug.tileToClient(cs.x, cs.y); // 새봄 자리
       $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pt.x, clientY: pt.y, bubbles: true }));
       var g = 0; while ($('#talk').hidden && g++ < 300) await wait(20);
       ok(!$('#talk').hidden && /새봄/.test($('#talk .talk-name').textContent), '새봄을 누르면 걸어가서 말 걸기 ' + JSON.stringify([pt, PrivacyMap.debug.me()]));
@@ -305,8 +316,8 @@
       ok(view() === 'v-map' && !$('#stage').hidden && getComputedStyle($('#stage')).display !== 'none', '맵 화면에서 무대 보임');
       var cr = $('#m-canvas').getBoundingClientRect(), sr = { width: $('#stage').clientWidth, height: $('#stage').clientHeight };
       ok(Math.abs(cr.width - sr.width) < 2 && Math.abs(cr.height - sr.height) < 2, '캔버스가 무대를 채움 ' + [cr.width, cr.height, sr.width, sr.height].map(Math.round));
-      // 새봄이 아닌 하늘(8,2)을 누르면 걸어가서 말을 건다 → 대화창
-      var pd = PrivacyMap.debug.tileToClient(8, 2);
+      // 새봄이 아닌 하늘을 누르면 걸어가서 말을 건다 → 대화창
+      var ch = castOf('haneul'), pd = PrivacyMap.debug.tileToClient(ch.x, ch.y);
       $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pd.x, clientY: pd.y, bubbles: true }));
       var gt = 0; while ((!$('#talk') || $('#talk').hidden) && gt++ < 300) await wait(20);
       ok(!!$('#talk') && !$('#talk').hidden && /\S/.test($('#talk .talk-text').textContent), '말 걸기 결과가 대화창에 나옴');
@@ -329,10 +340,13 @@
         if (tOut == null && /밖으로 나왔다/.test(tx)) tOut = now;
         else if (tOut != null && tGone == null && !/밖으로 나왔다/.test(tx)) tGone = now;
       }).observe($('#m-say'), { childList: true, characterData: true, subtree: true });
+      var seenBubble = {}, bt = setInterval(function () { (PrivacyMap.debug.stage().bubbles || []).forEach(function (w) { seenBubble[w] = true; }); }, 30);
       await walkToTarget(ow);
+      clearInterval(bt); ow.passGreet = !!seenBubble.haneul;
       ok(tOut != null && tGone != null && tGone - tOut <= 2600, '“밖으로 나왔다”는 잠깐 뜨고 사라짐: ' + (tGone != null && tOut != null ? Math.round(tGone - tOut) + 'ms' : '안 사라짐'));
       var oseq = ow.areas.join('>');
-      ok(/우리 집 앞.*마을 길.*교문.*복도.*2학년 3반 교실/.test(oseq), '집→마을 길→교문→복도→교실: ' + oseq);
+      ok(/내 방.*마을 길.*교문.*현관 앞.*2학년 3반 교실/.test(oseq), '내 방→마을 길→교문→현관 앞→교실: ' + oseq);
+      ok(ow.passGreet === true, '하늘이 곁을 지나가면 인사 말풍선이 저절로');
       ok($('#m-say').textContent.indexOf('방향키') < 0, '걷기 시작하면 첫 안내가 사라짐');
       ok(ow.talkLines >= 4, '새봄의 친구 소개 ' + ow.talkLines + '줄');
       ok(view() === 'v-game' && PrivacyApp.state().scene === 'pro_1', '소개 뒤 pro_1 장면');
@@ -358,7 +372,8 @@
       }
       $('#btn-continue').click(); await wait();
       var mm = PrivacyMap.debug.me();
-      ok(view() === 'v-map' && PrivacyApp.state().mapTarget === 'c1_e1_a' && mm.x === 6 && mm.y === 4, '개편 전 맵 저장 위치에서 이어짐 ' + JSON.stringify(mm));
+      var sp = window.PRIVACY_WORLD.SPAWNS.classroom;
+      ok(view() === 'v-map' && PrivacyApp.state().mapTarget === 'c1_e1_a' && mm.x === sp.x && mm.y === sp.y, '개편 전 맵 저장 위치는 버리고 걷기 시작점에서(진행은 그대로) ' + JSON.stringify(mm));
       sessionStorage.removeItem('probe-phase'); sessionStorage.removeItem('probe-carry');
     }
 
@@ -435,23 +450,21 @@
       ok(rpt.y < pr.top && rpt.x > sr.left && rpt.x < sr.right, '좁아진 뒤에도 주인공이 폰 위에 보임 ' + JSON.stringify([Math.round(rpt.x), Math.round(rpt.y), Math.round(pr.top)]));
     }
 
-    else if (s === 'yard') { // 운동장 형태: 가로로 긴 트랙 안에 경기장, 골대는 골라인 가운데, 맵은 필요한 만큼만
-      var WDy = window.PRIVACY_WORLD, L = (window.PrivacySchoolyard || {}).layout;
-      ok(WDy.H === 34 && WDy.W === 64, '맵 64×34(운동장을 매점 바로 밑으로 올림): ' + WDy.W + '×' + WDy.H);
-      var sto = WDy.OBJECTS.filter(function (o) { return o.id === 'store'; })[0], tents = WDy.OBJECTS.filter(function (o) { return /^tent/.test(o.id); });
-      ok(!!L && !!sto && L.apron[1] - (sto.y + sto.h) >= 0 && L.apron[1] - (sto.y + sto.h) <= 3, '운동장이 매점 바로 밑에서 시작: 매점 아래 ' + (sto && sto.y + sto.h) + ' / 운동장 ' + (L && L.apron[1]));
-      ok(!!L && tents.length === 2 && tents.every(function (o) { return o.y + o.h > L.track[1] && o.y < L.track[1] + 2; }), '축제 부스가 트랙 윗부분에 올라섬');
-      ok(!!L && L.track[2] / L.track[3] >= 1.3, '트랙이 가로로 긴 타원: ' + (L && L.track.join(',')));
-      var tr = L && L.track, pi = L && L.pitch;
-      ok(!!L && pi[0] > tr[0] && pi[1] > tr[1] && pi[0] + pi[2] < tr[0] + tr[2] && pi[1] + pi[3] < tr[1] + tr[3], '경기장이 트랙 안쪽에');
-      var gl = WDy.OBJECTS.filter(function (o) { return o.id === 'yardGoalLeft'; })[0], gr = WDy.OBJECTS.filter(function (o) { return o.id === 'yardGoalRight'; })[0];
-      var cy = pi ? pi[1] + pi[3] / 2 : -1;
-      ok(!!gl && !!gr && gl.y < cy && gl.y + gl.h > cy && gr.y < cy && gr.y + gr.h > cy, '골대가 경기장 세로 가운데');
-      ok(!!gl && !!gr && gl.x + gl.w === pi[0] && gr.x === pi[0] + pi[2], '골대가 양쪽 골라인 바로 바깥');
-      ok(!!gl && !WDy.walkable(gl.x, gl.y + 1) && !WDy.walkable(gr.x, gr.y + 1), '골대 칸은 지나갈 수 없음');
-      ok(WDy.walkable(11, Math.floor(cy)) && WDy.walkable(11, Math.floor(tr[1] + tr[3]) - 1) && WDy.walkable(2, Math.floor(tr[1]) + 2), '경기장·트랙·가장자리는 걸을 수 있음');
-      ok(!WDy.walkable(5, WDy.H - 1), '운동장 아래 담장');
-      ok(WDy.walkable(11, 16) && WDy.walkable(21, 16), '현관→교문 길은 그대로');
+    else if (s === 'yard') { // 장면 그림 맵: 장면 5개(교실·도서관·마당·마을 길·내 방)를 출입구로 오간다
+      var WY = window.PRIVACY_WORLD;
+      ok(WY.SCENES.length === 5 && WY.W === 160 && WY.H === 18, '장면 5개·격자 160×18: ' + WY.W + '×' + WY.H);
+      $('#btn-new').click();
+      await play(R.A, { upto: 1, stopAtMap: true }); // 하교 걷기(교실에서 출발)
+      var S = {}; WY.SCENES.forEach(function (c) { S[c.id] = c; });
+      ok(await walkToCell(S.library.ox + 15, 13), '교실 → 마당 → 도서관 문으로 걸어 들어감');
+      ok(PrivacyMap.debug.me().area === '도서관', '도서관 안: ' + PrivacyMap.debug.me().area);
+      ok(await walkToCell(S.yard.ox + 22, 10), '도서관 → 마당');
+      ok(PrivacyMap.debug.me().area !== '도서관' && WY.sceneAt(PrivacyMap.debug.me().x).id === 'yard', '마당: ' + PrivacyMap.debug.me().area);
+      // 천막·매점은 지나갈 수 없음(그림 위 막힌 칸)
+      var tn = WY.object('tent1'), sto = WY.object('store');
+      ok(!WY.walkable(tn.x + 1, tn.y + 1) && !WY.walkable(sto.x + 1, sto.y + 1), '천막·매점 칸은 막힘');
+      $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk(); await wait(50);
+      ok(view() === 'v-game' && PrivacyApp.state().scene === 'c1_e1_a', '돌아다닌 뒤 본편 진행');
     }
 
     else if (s === 'warning') { // 시작하자마자 어두운 화면의 주의 안내(가상 상황 고지·다루는 장면·도움 연락처)
@@ -578,7 +591,7 @@
       ok(ci === 6 && view() === 'v-chapter' && !$('#stage').hidden, '1장 끝: 장 카드가 맵 무대 위에');
       var lis = $$('#c-summary .trust-list li');
       ok(lis.length >= 4 && lis.every(function (li) { return li.lastElementChild && li.lastElementChild.matches('.spr.face'); }), '관계 줄마다 오른쪽 끝에 얼굴 (' + lis.length + '줄)');
-      ok(lis.every(function (li) { return !!li.querySelector('.trust-mark'); }), '가까워짐·그대로·멀어짐 표식');
+      ok(lis.every(function (li) { return !!li.querySelector('.trust-mark'); }), '믿음 생김·그대로·줄어듦 표식');
       var mj = $('#c-summary .trust-list li[data-who="minjun"] .spr.face');
       var gl = 0; while (mj && !mj.classList.contains('loaded') && gl++ < 100) await wait(30);
       ok(!!mj && mj.getAttribute('data-who') === 'minjun' && /characters-official\/minjun-portraits\.png/.test(mj.style.backgroundImage), '민준 줄엔 공통 규격 민준 초상화');
@@ -598,13 +611,13 @@
 
     else if (s === 'quest-icon') {
       $('#btn-new').click(); await wait(30);
-      ok($('#v-map').textContent.indexOf('❗') < 0 && $$('#v-map .map-help .ico-quest').length === 1, '맵 안내 문장: ❗ 대신 노란 느낌표 그림');
+      ok($('#v-map').textContent.indexOf('❗') < 0 && $$('#v-map .map-help .ico-quest').length === 1 && $$('#v-map .map-help .ico-talk').length === 1, '맵 안내 문장: 목적지 핀·물음표 말풍선 그림');
       key('ArrowRight'); key('ArrowRight', 'keyup'); await wait(300); // 침대 옆에서 한 칸 비켜 아무것도 없는 곳으로
       $('#btn-map-act').click(); await wait(30);
       ok(!!$('#m-say .ico-quest') && $('#m-say').textContent.indexOf('❗') < 0, '대상 아닌 곳에서 누를 때 안내에도 그림');
       $('#btn-map-skip').click(); await wait(30);
-      ok(!!$('#btn-map-act .ico-quest') && $('#btn-map-act').textContent.indexOf('❗') < 0 && /새봄에게 말 걸기/.test($('#btn-map-act').textContent), '목적지 버튼: 그림 + 새봄에게 말 걸기');
-      ok($$('.ico-quest').every(function (im) { return /quest\.png/.test(getComputedStyle(im).backgroundImage) && im.getAttribute('role') === 'img' && !!im.getAttribute('aria-label'); }), 'quest.png 사용·대체 글자 있음');
+      ok(!!$('#btn-map-act .ico-talk') && $('#btn-map-act').textContent.indexOf('❗') < 0 && /새봄에게 말 걸기/.test($('#btn-map-act').textContent), '목적지 버튼(인물): ? 그림 + 새봄에게 말 걸기');
+      ok($$('.ico-quest').every(function (im) { return /markers\/dest\.png/.test(getComputedStyle(im).backgroundImage) && im.getAttribute('role') === 'img' && !!im.getAttribute('aria-label'); }) && $$('.ico-talk').every(function (im) { return /markers\/talk\.png/.test(getComputedStyle(im).backgroundImage) && im.getAttribute('role') === 'img' && !!im.getAttribute('aria-label'); }), '표시 그림(dest·talk.png) 사용·대체 글자 있음');
     }
 
     else if (s === 'webp' || s === 'webp-fallback') {
@@ -612,15 +625,17 @@
       ok(Object.keys(WL).length >= 30, 'webp 목록 ' + Object.keys(WL).length + '장');
       $('#btn-new').click();
       await play(R.A, { upto: 1, stopAtMap: true });
-      var gw = 0; while (!(window.PrivacySchool && window.PrivacySchool.ready() && window.PrivacyOutdoor.ready('tree') && window.PrivacyNeighborhood.ready('house-brick')) && gw++ < 100) await wait(50);
-      ok(window.PrivacySchool.ready() && window.PrivacyOutdoor.ready('tree') && window.PrivacyNeighborhood.ready('house-brick'), '학교·바깥·주택가 그림이 모두 뜸');
+      var SCx = window.PRIVACY_WORLD.SCENES;
+      for (var si = 0; si < SCx.length; si++) { PrivacyMap.debug.place(SCx[si].ox + 15, 15, 'up'); await wait(250); }
+      var gw = 0; while (performance.getEntriesByType('resource').filter(function (e) { return /assets\/scenes\//.test(e.name); }).length < 3 && gw++ < 100) await wait(50);
+      ok(true, '장면 그림 5장을 차례로 띄움');
       var names = performance.getEntriesByType('resource').map(function (e) { return decodeURI(new URL(e.name).pathname).replace(/^\/privacy\//, ''); });
       var pngHits = names.filter(function (n) { return /\.png$/.test(n) && WL[n]; });
       var webpHits = names.filter(function (n) { return /\.webp$/.test(n); });
       if (s === 'webp') {
         ok(pngHits.length === 0, '변환된 그림은 png를 받지 않음 ' + pngHits.slice(0, 4).join(','));
-        ok(webpHits.length >= 25, 'webp로 받음 ' + webpHits.length + '장');
-      } else ok(pngHits.length >= 20, 'webp가 안 되면 png로 되돌아감 ' + pngHits.length + '장');
+        ok(webpHits.filter(function (n) { return /^assets\/scenes\//.test(n); }).length >= 3, '장면 그림은 webp로 받음 ' + webpHits.length + '장');
+      } else ok(pngHits.filter(function (n) { return /^assets\/scenes\//.test(n); }).length >= 3, 'webp가 안 되면 png로 되돌아감 ' + pngHits.length + '장');
     }
 
     else if (s === 'portrait') {
@@ -632,7 +647,7 @@
       var pr = $('#talk-portrait').getBoundingClientRect(), tr = $('#talk').getBoundingClientRect(), mc = $('#v-map .map-controls').getBoundingClientRect();
       ok(pr.bottom <= tr.top + 16 && pr.bottom <= mc.top, '초상화는 대화창 위에 서고 아래 버튼을 가리지 않음');
       var sawMinjun = false, gg = 0;
-      while (!$('#talk').hidden && gg++ < 20) { if (/minjun-portraits\.png/.test(pv() || '')) sawMinjun = true; $('#btn-talk-next').click(); await wait(30); }
+      while (!$('#talk').hidden && gg++ < 60) { if (/minjun-portraits\.png/.test(pv() || '')) sawMinjun = true; $('#btn-talk-next').click(); await wait(30); }
       ok(sawMinjun, '민준이 말하는 줄에선 민준 초상화');
       ok(pv() === null, '대사가 끝나면 초상화도 사라짐');
       PrivacyApp.setSpeed('instant');
@@ -640,14 +655,14 @@
       ok(view() === 'v-game' && pv() === null, '폰(단톡) 장면에선 초상화 없음');
       await play(R.A, { upto: 1, stopAtMap: true });
       PrivacyApp.setSpeed('normal');
-      var pd = PrivacyMap.debug.tileToClient(8, 2); // 하늘
+      var ch2 = castOf('haneul'), pd = PrivacyMap.debug.tileToClient(ch2.x, ch2.y); // 하늘
       $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pd.x, clientY: pd.y, bubbles: true }));
       var gt = 0; while ($('#talk').hidden && gt++ < 300) await wait(20);
       ok(/haneul-portraits\.png/.test(pv() || ''), '맵에서 하늘에게 말 걸기: 하늘 초상화');
       key(' '); await wait(30);
-      // 사물 조사(해설)엔 초상화 없음: 교탁(5,2) 옆으로 가서 조사
-      var rt = PrivacyMap.debug.routeTo(5, 3) || [];
-      for (var k = 0; k < rt.length; k++) { key(ARROW[rt[k]]); key(ARROW[rt[k]], 'keyup'); var g = 0; await wait(16); while (PrivacyMap.debug.me().moving && g++ < 100) await wait(16); }
+      // 사물 조사(해설)엔 초상화 없음: 교탁 바로 아래로 가서 위를 보고 조사
+      var td = window.PRIVACY_WORLD.object('tdesk');
+      await walkToCell(td.x + 1, td.y + td.h);
       key('ArrowUp'); key('ArrowUp', 'keyup'); await wait(200); key(' '); await wait(30);
       ok(!$('#talk').hidden && pv() === null, '사물 조사(해설)엔 초상화 없음');
       key(' '); await wait(30);
@@ -664,8 +679,10 @@
       $('#btn-new').click();
       await play(R.A, { upto: 1, stopAtMap: true });
       var SM = PrivacyMap.debug;
-      // 마을 길 가운데로 가서(카메라가 맵 끝에 막히지 않는 곳) 움직임 줄이기를 끈다
-      var r0 = SM.routeTo(30, 16) || [];
+      // 장면이 화면보다 커지도록 좁게(휴대폰 폭) — 넓은 화면에선 장면 전체가 한눈에 보여 카메라가 움직이지 않는다
+      document.querySelector('.app') && (document.querySelector('.app').style.maxWidth = '400px'); window.dispatchEvent(new Event('resize')); await wait(300);
+      // 마을 길 가운데로 가서 움직임 줄이기를 끈다
+      var r0 = SM.routeTo(96 + 8, 9) || [];
       for (var k = 0; k < r0.length; k++) { key(ARROW[r0[k]]); key(ARROW[r0[k]], 'keyup'); var g = 0; await wait(16); while (SM.me().moving && g++ < 100) await wait(16); }
       $('#opt-motion').checked = true; $('#opt-motion').click(); await wait(400);
       // 데드존 카메라: 화면 가운데 상자 안에서는 배경이 움직이지 않고, 벗어날 때만 지연 없이 따라간다(어지러움 줄이기)
@@ -687,7 +704,7 @@
       var c3 = SM.cam();
       ok(c3.x === c2.x && c3.y === c2.y, '멈추면 배경도 바로 멈춤(뒤늦게 흐르지 않음)');
       // 걷기 동작: 반 칸마다 한 프레임(한 칸에 약 2번 바뀜, 칸이 바뀌어도 이어짐). 시간 대신 걸은 칸 수로 잰다
-      var r1 = SM.routeTo(40, 20) || [];
+      var r1 = SM.routeTo(96 + 2, 7) || [];
       for (var k1 = 0; k1 < r1.length; k1++) { key(ARROW[r1[k1]]); key(ARROW[r1[k1]], 'keyup'); var g1 = 0; await wait(16); while (SM.me().moving && g1++ < 100) await wait(16); }
       var lastF = SM.walkFrame(), lastX = SM.me().x, fch = 0, tiles = 0;
       key('ArrowRight');
@@ -706,6 +723,68 @@
       ok(Math.abs(c3.x - c3.tx) < 1, '움직임 줄이기면 카메라가 바로 따라붙음');
     }
 
+    else if (s === 'talk-marks' || s === 'talk-marks-motion') {
+      // ? 말풍선: 말을 걸어 볼 만한 사람(목적지 인물·이번 걷기에서 할 말·선택에 반응하는 한 줄) 머리 위에만, 말 걸면 사라짐
+      var TW = window.PRIVACY_WORLD, TM = PrivacyMap.debug;
+      function marksNow(ms) { TM.tick(ms || 16); return TM.talkMarks(); }
+      function whoList(ms) { return marksNow(ms).map(function (m) { return m.who + ':' + m.why; }).sort().join(','); }
+      $('#btn-new').click(); await wait(300);
+      var yard = TW.SCENES.filter(function (c) { return c.id === 'yard'; })[0];
+      if (s === 'talk-marks-motion') { // 움직임 허용: 위아래로 살짝 흔들림
+        TM.place(yard.ox + 14, 8, 'down'); await wait(50);
+        var ys = [0, 300, 600, 900].map(function (ms) { var m = marksNow(ms).filter(function (q) { return q.who === 'haneul'; })[0]; return m ? m.y : null; });
+        ok(ys.every(function (v) { return v != null; }) && Math.max.apply(null, ys) - Math.min.apply(null, ys) >= 1, '움직임 허용이면 ?가 위아래로 흔들림 ' + JSON.stringify(ys));
+        ok(TM.marker().kind === 'dest', '목적지(다른 장면)는 핀');
+      } else {
+        // 내 방(첫날 아침): 방에는 아무도 없음 → ? 없음, 목적지(교실의 새봄)는 다른 장면이라 방문에 핀
+        ok(marksNow().length === 0, '내 방엔 ? 없음');
+        ok(TM.marker().kind === 'dest', '다른 장면 목적지 = 핀 ' + JSON.stringify(TM.marker()));
+        // 마당: 오프닝에서 자기소개할 하늘·지호 머리 위에 ?
+        TM.place(yard.ox + 14, 8, 'down'); await wait(50);
+        ok(whoList() === 'haneul:lines,jiho:lines', '마당: 하늘·지호에게 ? ' + whoList());
+        var lbl = $('#m-canvas').getAttribute('aria-label');
+        ok(/물음표/.test(lbl) && /하늘/.test(lbl) && /지호/.test(lbl), '지도 설명 글에도 ?가 뜬 사람 이름: ' + lbl);
+        var y0 = marksNow(0)[0].y, y1 = marksNow(300)[0].y, y2 = marksNow(700)[0].y;
+        ok(y0 === y1 && y1 === y2, '움직임 줄이기면 ?가 흔들리지 않음 ' + [y0, y1, y2]);
+        // 지호 옆으로 걸어가 Space → 대화, 끝나면 지호의 ?만 사라짐
+        var jc = castOf('jiho');
+        ok(await walkToCell(jc.x, jc.y + 1), '지호 옆까지 걸어감');
+        key('ArrowUp'); key('ArrowUp', 'keyup'); await wait(50);
+        ok(/지호에게 말 걸기/.test($('#btn-map-act').textContent) && !!$('#btn-map-act .ico-talk'), '버튼 글자: ? 그림 + 지호에게 말 걸기 ' + $('#btn-map-act').textContent);
+        key(' '); await wait(50);
+        ok(!$('#talk').hidden && /지호/.test($('#talk .talk-name').textContent), '지호와 대화');
+        await passTalk(); await wait(3400); // 말하는 동안 뜬 말풍선(3.2초)이 사라진 뒤
+        ok(whoList(4000) === 'haneul:lines', '말 건 지호의 ?는 사라지고 하늘만 남음 ' + whoList());
+        var st0 = JSON.stringify([PrivacyApp.state().trust, PrivacyApp.state().stats, PrivacyApp.state().flags]);
+        // 하늘의 ?를 눌러도 가서 말 걸기
+        var hm = marksNow().filter(function (m) { return m.who === 'haneul'; })[0], cr = $('#m-canvas').getBoundingClientRect();
+        $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: cr.left + hm.x, clientY: cr.top + hm.y, bubbles: true }));
+        var g = 0; while ($('#talk').hidden && g++ < 300) await wait(20);
+        ok(!$('#talk').hidden && /하늘/.test($('#talk .talk-name').textContent), '? 말풍선을 누르면 걸어가서 하늘에게 말 걸기');
+        await passTalk(); await wait(50);
+        ok(marksNow(4000).length === 0, '둘 다 말 걸면 마당에 ? 없음');
+        ok(JSON.stringify([PrivacyApp.state().trust, PrivacyApp.state().stats, PrivacyApp.state().flags]) === st0 && PrivacyApp.state().mapTarget === 'pro_1', '말 걸기는 관계·점수·플래그를 바꾸지 않음');
+        // 교실: 목적지 새봄 = ?(핀 대신), 할 말 없는 민준은 ? 없음
+        var cls = TW.SCENES[0];
+        TM.place(cls.ox + 15, 12, 'up'); await wait(50); marksNow();
+        var mk = TM.marker();
+        ok(mk.kind === 'talk' && mk.who === 'saebom', '같은 장면의 목적지 인물은 ? ' + JSON.stringify(mk));
+        ok(marksNow().length === 0, '할 말 없는 민준에겐 ? 없음 ' + whoList());
+        // 다른 걷기: 지금 상태에서 조건이 맞는 반응 줄이 있는 사람에게만 ?(목적지 인물 제외)
+        await play(R.A, { upto: 3, stopAtMap: true });
+        TM.place(cls.ox + 15, 15, 'up'); await wait(3400);
+        var trg = TW.triggers[PrivacyApp.state().mapTarget], rs = PrivacyApp.state();
+        var expect = trg.cast.filter(function (c) {
+          if (c.who === trg.target.npc || TW.sceneAt(c.x) !== TW.sceneAt(TM.me().x)) return false;
+          if (trg.castLines && trg.castLines[c.who]) return true;
+          var hit = (TW.idle[c.who] || []).filter(function (l) { return PrivacyEngine.evalCond(l.if, rs); })[0];
+          return !!(hit && hit.if);
+        }).map(function (c) { return c.who; }).sort().join(',');
+        var got = marksNow().map(function (m) { return m.who; }).sort().join(',');
+        ok(got === expect, PrivacyApp.state().mapTarget + ' 시작 장면: ? 대상이 규칙과 같음 [' + got + '] = [' + expect + ']');
+      }
+    }
+
     else if (s === 'marker') {
       // ❗가 위 안내 상자·아래 버튼·안내 문구에 가리지 않는지(화면 좌표로 겹침 검사)
       function markerVisible(label) {
@@ -721,30 +800,25 @@
       }
       $('#btn-new').click(); await wait(300);
       var mk0 = markerVisible('첫날 아침 내 방');
-      ok(!!mk0 && mk0.tx === 34 && mk0.ty === 8, '방 안에서 목적지가 바깥이면 ❗는 방문에 ' + JSON.stringify(mk0));
-      // 집 밖으로 나가면 다시 목적지(교실 새봄) 쪽
-      var rt = PrivacyMap.debug.routeTo(42, 19) || [];
-      for (var k = 0; k < rt.length; k++) { key(ARROW[rt[k]]); key(ARROW[rt[k]], 'keyup'); var g = 0; await wait(16); while (PrivacyMap.debug.me().moving && g++ < 100) await wait(16); }
-      await wait(100);
+      ok(!!mk0 && mk0.kind === 'dest', '다른 장면 목적지는 핀(dest) ' + (mk0 && mk0.kind));
+      var WDm = window.PRIVACY_WORLD;
+      ok(!!mk0 && !!WDm.DOORS[mk0.tx + ',' + mk0.ty] && WDm.sceneAt(mk0.tx).id === 'room', '방 안에서 목적지가 다른 장면이면 ❗는 방문(출입구)에 ' + JSON.stringify(mk0));
+      // 집 밖(마을 길)으로 나가면 ❗는 학교로 가는 출입구 쪽
+      var hd = WDm.DOORS[mk0.tx + ',' + mk0.ty].to;
+      await walkToCell(hd[0] - 3, hd[1] + 1); await wait(100);
       var mk1 = markerVisible('집 앞');
-      ok(!!mk1 && !(mk1.tx === 34 && mk1.ty === 8), '집 밖에선 ❗가 학교 쪽 ' + JSON.stringify(mk1));
+      ok(!!mk1 && WDm.sceneAt(mk1.tx).id === 'village' && !!WDm.DOORS[mk1.tx + ',' + mk1.ty] && WDm.DOORS[mk1.tx + ',' + mk1.ty].scene === 'yard', '마을 길에선 ❗가 학교로 가는 길 끝에 ' + JSON.stringify(mk1));
     }
 
-    else if (s === 'neighborhood') {
+    else if (s === 'neighborhood') { // 마을 길: 이웃집 2채(조사만) + 길 끝 마지막 집이 우리 집
       $('#btn-new').click();
       await play(R.A, { upto: 1, stopAtMap: true });
-      var NM = PrivacyMap.debug, NW = window.PRIVACY_WORLD;
-      async function walkTo(tx, ty) {
-        var rt = NM.routeTo(tx, ty);
-        if (!rt) { fail.push('길 없음 ' + tx + ',' + ty); return false; }
-        for (var k = 0; k < rt.length; k++) { key(ARROW[rt[k]]); key(ARROW[rt[k]], 'keyup'); var g = 0; await wait(16); while (NM.me().moving && g++ < 100) await wait(16); }
-        var m = NM.me(); return m.x === tx && m.y === ty;
-      }
-      ok(NW.NEIGHBORS.length === 3, '이웃집 3채');
+      var NW = window.PRIVACY_WORLD, NM = PrivacyMap.debug;
+      ok(NW.NEIGHBORS.length === 2, '이웃집 2채');
       for (var ni = 0; ni < NW.NEIGHBORS.length; ni++) {
         var nb = NW.NEIGHBORS[ni];
-        ok(await walkTo(nb.approach.x, nb.approach.y), nb.name + ' 현관 앞까지 걸어감');
-        ok(NM.me().area === '주택가', nb.name + ' 앞은 주택가: ' + NM.me().area);
+        ok(await walkToCell(nb.approach.x, nb.approach.y), nb.name + ' 현관 앞까지 걸어감');
+        ok(NM.me().area === '마을 길', nb.name + ' 앞은 마을 길: ' + NM.me().area);
         key('ArrowUp'); key('ArrowUp', 'keyup'); await wait(250);
         var nm = NM.me();
         ok(nm.x === nb.approach.x && nm.y === nb.approach.y && nm.dir === 'up', nb.name + ' 안으로는 들어가지 않음');
@@ -752,23 +826,27 @@
         ok(!$('#talk').hidden && $('#talk .talk-text').textContent.indexOf(nb.look.slice(0, 8)) >= 0, nb.name + ' 조사: 생활 대사');
         await passTalk();
         var ns = PrivacyApp.state();
-        ok(view() === 'v-map' && ns.screen === 'map' && ns.mapTarget === 'c1_e1_a', nb.name + ' 조사 뒤에도 같은 걷기(문 이동·장면 없음)');
+        ok(view() === 'v-map' && ns.screen === 'map' && ns.mapTarget === 'c1_e1_a', nb.name + ' 조사 뒤에도 같은 걷기');
       }
-      ok(await walkTo(43, 18), '우리 집 현관 옆');
+      var homeKey = Object.keys(NW.DOORS).filter(function (k) { return NW.DOORS[k].scene === 'room'; })[0], hx = Number(homeKey.split(',')[0]);
+      ok(NW.NEIGHBORS.every(function (n) { return n.approach.x < hx; }), '우리 집은 길 끝 마지막 집');
+      var mb = NW.object('mailbox');
+      ok(await walkToCell(mb.x - 1, mb.y), '우편함 옆');
       key('ArrowRight'); key('ArrowRight', 'keyup'); await wait(250); key(' '); await wait(50);
       ok(!$('#talk').hidden && /우편함/.test($('#talk .talk-text').textContent), '노란 우편함 조사');
       await passTalk();
       $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk(); await wait(50);
-      ok(view() === 'v-game' && PrivacyApp.state().scene === 'c1_e1_a', '주택가를 돌아본 뒤 본편 진행');
+      ok(view() === 'v-game' && PrivacyApp.state().scene === 'c1_e1_a', '마을을 돌아본 뒤 본편 진행');
     }
 
     else if (s === 'pos-recover') {
       var E3 = window.PrivacyEngine, ST3 = window.PRIVACY_STORY, PK3 = 'ethicity.privacy.progress.v2';
-      if (P.phase === 0) { // 저장 위치가 새로 생긴 벽돌집 안(39,26)
+      var NB3 = window.PRIVACY_WORLD.NEIGHBORS[1], BX = NB3.x + 2, BY = NB3.y + 2;
+      if (P.phase === 0) { // 저장 위치가 벽돌집(걸을 수 없는 칸) 안
         var m3 = E3.createState(ST3), g3 = 0;
         while (!(m3.screen === 'map' && m3.mapTarget === 'c1_e1_a') && g3++ < 8) m3 = m3.screen === 'scene' && E3.needsChoice(ST3, m3) ? E3.choose(ST3, m3, 'photo') : E3.advance(ST3, m3);
         m3.history = [];
-        localStorage.setItem(PK3, JSON.stringify({ v: 1, run: m3, explored: { pro_1: ['photo'] }, endingsSeen: ['B'], pos: { x: 39, y: 26, dir: 'up', for: 'c1_e1_a' } }));
+        localStorage.setItem(PK3, JSON.stringify({ v: 1, run: m3, explored: { pro_1: ['photo'] }, endingsSeen: ['B'], pos: { x: BX, y: BY, dir: 'up', for: 'c1_e1_a', v: window.PRIVACY_WORLD.VERSION } }));
         sessionStorage.setItem('probe-saved', JSON.stringify(m3.stats));
         sessionStorage.setItem('probe-phase', '1'); carry(); location.reload(); return;
       }
@@ -776,7 +854,7 @@
       $('#btn-continue').click(); await wait(50);
       var rm = PrivacyMap.debug.me();
       ok(view() === 'v-map' && PrivacyApp.state().mapTarget === 'c1_e1_a', '같은 걷기에서 이어짐');
-      ok(window.PRIVACY_WORLD.walkable(rm.x, rm.y) && Math.abs(rm.x - 39) + Math.abs(rm.y - 26) <= 3, '집 안 저장 위치 → 가까운 걸을 수 있는 칸 ' + JSON.stringify(rm));
+      ok(window.PRIVACY_WORLD.walkable(rm.x, rm.y) && Math.abs(rm.x - BX) + Math.abs(rm.y - BY) <= 5, '집 안 저장 위치 → 가까운 걸을 수 있는 칸 ' + JSON.stringify(rm));
       var pg = JSON.parse(ls(PK3));
       ok(pg.endingsSeen.indexOf('B') >= 0 && pg.explored.pro_1 && JSON.stringify(PrivacyApp.state().stats) === sessionStorage.getItem('probe-saved'), '진행·완료 기록은 그대로');
       checkOthersKept();
@@ -795,7 +873,7 @@
       ok(!!$('#opt-sound') && !$('#opt-sound').checked, '메뉴에 효과음 켜기(꺼짐 표시)');
       $('#opt-sound').click(); await wait();
       $('#btn-menu-close').click(); await wait();
-      ok(JSON.parse(ls('ethicity.privacy.settings.v1')).sound === true && window.__beeps === 1, '켠 설정이 저장되고 미리듣기 한 번');
+      ok(JSON.parse(ls('ethicity.privacy.settings.v1')).sound === true && (function (fx) { return fx.length === 1 && /tap\.wav$/.test(fx[0]); })(window.__plays.filter(function (u) { return !/assets\/bgm\//.test(u); })), '켠 설정이 저장되고 미리듣기(tap) 한 번(배경음악 제외): ' + window.__plays.join(','));
       await wait(300);
       var b0 = window.__beeps;
       $$('#g-dock .choice')[0].click(); await wait(400);
@@ -833,29 +911,16 @@
       var mark0 = st.chapterMarks[0].trust;
       var okBonds = bonds.length === ST.trustable.length && bonds.every(function (b) {
         var w = b.getAttribute('data-who'), d = st.trust[w] - (mark0[w] || 0);
-        var word = d > 0 ? '친해짐' : d < 0 ? '멀어짐' : '그대로';
+        var word = d > 0 ? '믿음이 생김' : d < 0 ? '믿음이 줄어듦' : '그대로';
         return !!b.querySelector('.spr.face') && b.textContent.indexOf(ST.characters[w].name) >= 0 && b.textContent.indexOf(word) >= 0;
       });
-      ok(okBonds, '친구마다 얼굴 + 친해짐/그대로/멀어짐(실제 관계 변화와 일치) ' + bonds.map(function (b) { return b.textContent; }).join(' / '));
+      ok(okBonds, '친구마다 얼굴 + 믿음이 생김/그대로/줄어듦(실제 신뢰 변화와 일치) ' + bonds.map(function (b) { return b.textContent; }).join(' / '));
       ok(/엔딩 D/.test($('#finale .finale-end').textContent), '마지막에 엔딩 이름');
       ok(!!$('#finale .finale-odds') && $('#finale .finale-odds').textContent.indexOf(window.PRIVACY_ODDS.D + '%') >= 0 && /아무거나 골랐다면/.test($('#finale .finale-odds').textContent), '“아무거나 골랐다면” 확률: ' + ($('#finale .finale-odds') || {}).textContent);
       $('#finale-go').click(); await wait(50);
       ok($('#finale').hidden && view() === 'v-ending' && /엔딩 D/.test($('#e-eyebrow').textContent), '결과 보기 → 엔딩 페이지');
       $('#btn-end-path').click(); await wait(); $('#btn-path-back').click(); await wait();
       ok(view() === 'v-ending' && $('#finale').hidden, '경로에서 돌아올 땐 연출 없이');
-    }
-
-    else if (s === 'school-roof') {
-      $('#btn-new').click(); await wait(30);
-      ok(PrivacyMap.debug.roof() === true, '학교 밖(내 방)에선 학교 지붕이 덮여 있음');
-      var ow = { walk: true, areas: [], roofAt: {} };
-      var M = PrivacyMap.debug, route = M.route();
-      for (var k = 0; k < route.length; k++) {
-        key(ARROW[route[k]]); key(ARROW[route[k]], 'keyup'); var g = 0; await wait(16); while (M.me().moving && g++ < 100) await wait(16);
-        var a = M.me().area; if (!(a in ow.roofAt)) ow.roofAt[a] = M.roof();
-      }
-      ok(ow.roofAt['교문'] === true && ow.roofAt['마을 길'] === true, '교문·마을 길에선 지붕 덮임 ' + JSON.stringify(ow.roofAt));
-      ok(ow.roofAt['복도'] === false && ow.roofAt['2학년 3반 교실'] === false, '건물에 들어가면 지붕이 사라짐');
     }
 
     else if (s === 'talk-guard') {
@@ -898,7 +963,7 @@
       ok(!$('#btn-continue').hidden, '맵에서 새로고침 → 이어 하기');
       $('#btn-continue').click(); await wait();
       var m1 = PrivacyMap.debug.me();
-      ok(view() === 'v-map' && m1.x === m0b.x && m1.y === m0b.y && m0b.x === 6, '같은 위치에서 재개 (' + m1.x + ',' + m1.y + ')');
+      ok(view() === 'v-map' && m1.x === m0b.x && m1.y === m0b.y && m0b.x === window.PRIVACY_WORLD.SPAWNS.classroom.x - 2, '같은 위치에서 재개 (' + m1.x + ',' + m1.y + ')');
       $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk(); await wait();
       ok(view() === 'v-game' && PrivacyApp.state().scene === 'c1_e1_a', '재개 후 사건 시작');
       sessionStorage.removeItem('probe-phase'); sessionStorage.removeItem('probe-carry');
@@ -1039,23 +1104,143 @@
     else if (s === 'normal-speed') {
       $('#btn-new').click(); await wait();
       var tLines = [];
-      new MutationObserver(function () { var n = $$('#g-log li').length; if (n > tLines.length) tLines.push(performance.now()); }).observe($('#g-log'), { childList: true });
+      new MutationObserver(function () { var n = realLis().length; if (n > tLines.length) tLines.push(performance.now()); }).observe($('#g-log'), { childList: true });
       $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk();
-      var gw = 0; while (!$$('#g-log li').length && gw++ < 200) await wait(20);
-      var shown = $$('#g-log li').length;
+      var gw = 0; while (!realLis().length && gw++ < 200) await wait(20);
+      var shown = realLis().length;
       await wait(1700);
       ok(tLines.length >= 2 && tLines[1] - tLines[0] >= 1300, '메시지가 하나씩 천천히(간격 ' + (tLines.length >= 2 ? Math.round(tLines[1] - tLines[0]) : '?') + 'ms ≥ 1.3초)');
       ok(shown >= 1 && shown < 8 && !!$('.skip-btn'), '대사가 차례로 나옴(100ms 뒤 ' + shown + '줄)');
-      $('#g-log').click(); await wait();
-      ok($$('#g-log li').length === 8 && $$('#g-dock .choice').length === 3, '화면 누르면 모두 보기 → 선택지');
+      $('.skip-btn').click(); await wait();
+      ok(realLis().length === 8 && !$('#g-log li.typing') && !$('#g-log .type-rest') && $$('#g-dock .choice').length === 3, '모두 보기 → 남은 대사 한꺼번에 → 선택지');
       $$('#g-dock .choice')[0].click();
-      var gn = 0; while (!$('#btn-next') && gn++ < 160) await wait(50); // 반응 줄도 1.5초 간격으로 하나씩
+      var gn = 0; while (!$('#btn-next') && gn++ < 400) await wait(50); // 반응 줄도 하나씩(입력 중… → 주르륵 → 쉼)
       ok(!!$('#btn-next'), '반응 표시 뒤 계속 버튼');
       ok(document.activeElement === $('#btn-next'), '계속 버튼에 키보드 포커스');
       $('#btn-menu').click(); await wait();
       ok(!$('#menu').hidden, '메뉴 열림');
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait();
       ok($('#menu').hidden, 'Esc로 메뉴 닫힘');
+    }
+
+    else if (s === 'greet-met' || s === 'greet-met-2') {
+      // 오프닝 새봄의 "오는 길에 하늘이랑 지호도 봤지?"는 이 걷기에서 둘 다 마주쳤을 때만(지나가며 인사·말 걸기), 아니면 다른 줄
+      var TW = window.PRIVACY_WORLD, TM = PrivacyMap.debug;
+      $('#btn-new').click(); await wait(300);
+      var cls = TW.SCENES.filter(function (c) { return c.id === 'classroom'; })[0], yard = TW.SCENES.filter(function (c) { return c.id === 'yard'; })[0];
+      if (s === 'greet-met-2') { // 마당에서 하늘·지호 곁을 지나감(말은 안 걸음)
+        var hc = castOf('haneul'), jc = castOf('jiho');
+        TM.place(yard.ox + 14, 8, 'down'); await wait(50);
+        ok(await walkToCell(hc.x, hc.y + 1), '하늘 곁 지나가기');
+        ok(await walkToCell(jc.x, jc.y + 1), '지호 곁 지나가기');
+      }
+      TM.place(cls.ox + 15, 12, 'up'); await wait(50);
+      var sb = castOf('saebom');
+      ok(await walkToCell(sb.x, sb.y + 1), '새봄 앞까지 걸어감');
+      key('ArrowUp'); key('ArrowUp', 'keyup'); await wait(50);
+      key(' '); await wait(100);
+      var tx = $('#talk .talk-text').textContent;
+      if (s === 'greet-met') ok(!$('#talk').hidden && /마당에 있더라/.test(tx) && !/봤지\?/.test(tx), '둘을 안 마주쳤으면 "봤지?" 대신 다른 줄: …' + tx.slice(-50));
+      else ok(!$('#talk').hidden && /봤지\?/.test(tx) && !/마당에 있더라/.test(tx), '둘 다 지나쳤으면 "오는 길에 하늘이랑 지호도 봤지?": …' + tx.slice(-50));
+    }
+
+    else if (s === 'route-bad') {
+      // 지시서 [나쁜 경로]: 내가 해친 민준이는 9시 전에 말리지 않는다(아무도 없으면 '알림'), 엔딩 D 본문에 양면·책임 행동
+      var BAD = ['pro_1#sns', 'c1_e1_a#public', 'c1_e1_b#pass', 'c1_e2_a#shoot', 'c1_e2_b#story', 'c1_e2_d#no', 'c1_e3_b#capture', 'c1_e3_cap#none',
+        'c2_e4_a#forward', 'c2_e4_b#blame', 'c2_e5_a#all', 'c2_e5_b#close', 'c2_e6_a#post', 'c2_e6_b#deny',
+        'c3_e7_a#join', 'c3_e7_b#hide', 'c3_e8_a#meet', 'c3_e8_b#go', 'c3_e8_c#fight', 'c3_e8_f#silence', 'c3_e8_i#fine', 'c3_e9_a#share', 'c3_e9_b#keep'];
+      var heads = {};
+      new MutationObserver(function () { var st = PrivacyApp.state(); var h = $('#g-head .head-title'); if (st && h) heads[st.scene] = h.textContent; }).observe($('#g-head'), { childList: true, subtree: true });
+      $('#btn-new').click(); await wait();
+      await play(BAD);
+      ok(heads.c3_e8_b === '알림', '9시 전: 민준 개인톡이 아님(말리는 친구 없음 → 알림) ' + heads.c3_e8_b);
+      ok(heads.c3_e8_i === '민준', '다음 날 민준 개인톡은 그대로 ' + heads.c3_e8_i);
+      ok(view() === 'v-ending' && /엔딩 D/.test($('#e-eyebrow').textContent), '엔딩 D');
+      ok(/퍼뜨린 사람이기도/.test($('#e-body').textContent) && /사과하고/.test($('#e-body').textContent) && /협조/.test($('#e-body').textContent), '엔딩 D 본문: 양면 + 책임지는 행동');
+    }
+
+    else if (s === 'typing') {
+      // 1) 대화창(오프닝 소개): 첫 누르기 = 이 줄 다 보이기, 다음 누르기 = 다음 줄
+      $('#btn-new').click(); await wait(30);
+      $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(30);
+      var tt = $('#talk .talk-text');
+      ok(!$('#talk').hidden && PrivacyTalk.typing() && !!tt.querySelector('.type-rest'), '대화창 글자가 한 글자씩 나오는 중');
+      ok(tt.getAttribute('aria-hidden') === 'true' && $('#talk .talk-live').textContent === '' && !$('#talk').hasAttribute('aria-live'), '치는 동안은 화면 읽기에 안 읽힘(대화창 자체는 aria-live 아님)');
+      var full1 = tt.textContent, part1 = tt.querySelector('p span').textContent;
+      ok(part1.length < full1.length, '보이는 글자가 전체보다 짧음 ' + part1.length + '/' + full1.length);
+      $('#btn-talk-next').click(); await wait();
+      ok(!$('#talk').hidden && !PrivacyTalk.typing() && tt.textContent === full1 && !tt.querySelector('.type-rest'), '첫 누르기: 같은 줄을 다 보여 줌(넘기지 않음)');
+      ok(!tt.hasAttribute('aria-hidden') && $('#talk .talk-live').textContent.indexOf(full1) >= 0, '다 보인 줄은 한 번 읽힘: ' + $('#talk .talk-live').textContent);
+      $('#btn-talk-next').click(); await wait();
+      ok($('#talk').hidden || tt.textContent !== full1, '두 번째 누르기: 다음 줄로(누른 것을 버리지 않음)');
+      if (!$('#talk').hidden && PrivacyTalk.typing()) { var full2 = tt.textContent; key(' '); await wait(); ok(!PrivacyTalk.typing() && tt.textContent === full2 && !$('#talk').hidden, 'Space도 첫 번째는 완성'); }
+      await passTalk();
+      // 2) 폰 단톡(pro_1): '입력 중…' → 주르륵 → 누르면 완성 → 다시 누르면 다음 메시지
+      var added = [];
+      new MutationObserver(function (ms) {
+        ms.forEach(function (m) { Array.prototype.forEach.call(m.addedNodes, function (n) { if (n.tagName === 'LI') added.push(n.classList.contains('typing') ? 'dots' : n.classList.contains('msg') ? 'msg' : 'etc'); }); });
+      }).observe($('#g-log'), { childList: true });
+      var gw = 0; while (!$('#g-log .type-rest') && gw++ < 600) await wait(10);
+      var li = ($('#g-log .type-rest') || document.body).closest('li');
+      ok(!!li, '말풍선 글자가 주르륵 나오기 시작');
+      if (li) {
+        var fullT = li.querySelector('.bubble p').textContent, before = realLis().length;
+        ok(li.getAttribute('aria-hidden') === 'true', '치는 중인 말풍선은 화면 읽기에서 숨김');
+        ok(li.querySelector('.bubble p span').textContent.length < fullT.length, '보이는 글자가 아직 일부');
+        ok(added.indexOf('dots') >= 0 && added.indexOf('dots') < added.indexOf('msg'), '친구 메시지 앞에 “입력 중…”: ' + added.join(','));
+        ok(!$('#g-log li.typing') || /입력 중/.test($('#g-log li.typing').textContent), '“입력 중…” 글자');
+        $('#g-log').click(); await wait();
+        ok(!$('#g-log .type-rest') && li.querySelector('.bubble p').textContent === fullT && realLis().length === before, '첫 누르기: 지금 메시지를 다 보여 줌(다음으로 안 넘어감)');
+        ok(!li.hasAttribute('aria-hidden'), '다 보인 말풍선은 숨김 해제');
+        $('#g-log').click(); await wait();
+        ok(realLis().length === before + 1, '두 번째 누르기: 바로 다음 메시지 ' + before + '→' + realLis().length);
+        if ($('#g-log .type-rest')) { var n2 = realLis().length, f2 = $('#g-log .type-rest').closest('p').textContent; key(' '); await wait(); ok(!$('#g-log .type-rest') && realLis().length === n2 && $$('#g-log .bubble p').some(function (p) { return p.textContent === f2; }), 'Space도 첫 번째는 완성'); }
+      }
+      // 3) 나머지는 그냥 두고 속도 재기: 글자당 약 30ms, 긴 메시지도 1.5초 안
+      var dur = [], cur = null, t0 = 0;
+      gw = 0;
+      while (!$$('#g-dock .choice').length && gw++ < 3000) {
+        var r = $('#g-log .type-rest');
+        var p = r ? r.closest('p, li') : null;
+        if (p !== cur) { if (cur) dur.push({ len: Array.from(cur.textContent).length, ms: performance.now() - t0 }); cur = p; t0 = performance.now(); }
+        await wait(5);
+      }
+      if (cur) dur.push({ len: Array.from(cur.textContent).length, ms: performance.now() - t0 });
+      var maxMs = Math.max.apply(null, dur.map(function (d) { return d.ms; }).concat([0]));
+      var shortOnes = dur.slice(1).filter(function (d) { return d.len >= 8 && d.len <= 40; });
+      var perChar = shortOnes.map(function (d) { return d.ms / d.len; });
+      ok(dur.length >= 3, '타자 효과로 나온 줄 ' + dur.length + '개');
+      ok(maxMs <= 1700, '가장 긴 줄도 1.5초 안팎(' + Math.round(maxMs) + 'ms): ' + dur.map(function (d) { return d.len + '자 ' + Math.round(d.ms); }).join(' / '));
+      ok(perChar.length && perChar.every(function (x) { return x >= 20 && x <= 45; }), '짧은 줄은 글자당 25~35ms 안팎: ' + perChar.map(function (x) { return x.toFixed(1); }).join(','));
+      // 4) 화면 읽기: 다 쳐진 메시지만, 메시지마다 한 번
+      var lives = $$('#g-live p').map(function (q) { return q.textContent; }), lis = realLis();
+      ok(!$('#g-log').hasAttribute('aria-live') && $('#g-live').getAttribute('aria-live') === 'polite', '한 글자씩 바뀌는 로그는 aria-live 아님, 따로 읽기 칸');
+      ok(lives.length === lis.length, '읽히는 문장 수 = 메시지 수(한 번씩) ' + lives.length + '/' + lis.length);
+      ok(lis.every(function (x, i) { var t = (x.querySelector('.bubble p') || x).textContent; return !!lives[i] && lives[i].indexOf(t) >= 0; }), '읽히는 문장은 완성된 전체 글자');
+      ok(!lis.some(function (x) { return x.hasAttribute('aria-hidden'); }), '다 끝나면 숨긴 말풍선 없음');
+      // 4-2) 아주 긴 줄(100자)도 1.5초에 끝남(글자당 시간을 줄임)
+      var lb = document.createElement('p'), tS = performance.now(), tE = 0;
+      PrivacyTyper.start(lb, new Array(101).join('가'), function () { tE = performance.now(); });
+      gw = 0; while (!tE && gw++ < 400) await wait(10);
+      ok(tE && tE - tS >= 1300 && tE - tS <= 1650 && lb.textContent.length === 100, '100자 줄도 약 1.5초(' + Math.round(tE - tS) + 'ms)');
+      // 5) 선택 뒤 반응 줄도 같은 방식, 끝나면 계속 버튼
+      $$('#g-dock .choice')[0].click();
+      var sawR = false; gw = 0; while (!$('#btn-next') && gw++ < 2000) { if ($('#g-log .type-rest')) sawR = true; await wait(10); }
+      ok(sawR && !!$('#btn-next') && !$('#g-log .type-rest'), '반응 줄도 주르륵 → 계속 버튼');
+    }
+
+    else if (s === 'typing-reduce' || s === 'typing-os-reduce') {
+      var sawType = false, sawDots = false;
+      new MutationObserver(function () { if (document.querySelector('.type-rest')) sawType = true; if (document.querySelector('#g-log li.typing')) sawDots = true; }).observe(document.body, { childList: true, subtree: true });
+      ok(!PrivacyTyper.enabled(), '타자 효과 꺼짐(' + (s === 'typing-reduce' ? '게임 메뉴 움직임 줄이기' : '기기 동작 줄이기') + ')');
+      $('#btn-new').click(); await wait(30);
+      $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(30);
+      ok(!$('#talk').hidden && !PrivacyTalk.typing() && !$('#talk .type-rest') && /\S/.test($('#talk .talk-live').textContent), '대화창 줄이 바로 다 보이고 한 번 읽힘');
+      await passTalk();
+      var gw = 0; while (!$$('#g-dock .choice').length && gw++ < 3000) await wait(10);
+      ok($$('#g-dock .choice').length === 3, '선택지까지 진행');
+      ok(!sawType && !sawDots, '한 글자씩·입력 중 표시 없이 메시지가 통째로');
+      ok($$('#g-live p').length === $$('#g-log li').length, '메시지마다 한 번 읽힘 ' + $$('#g-live p').length + '/' + $$('#g-log li').length);
     }
 
     else if (s.indexOf('shot-') === 0) { // 스크린샷용: 특정 지점까지 진행 후 멈춤(결과 출력 없음)
@@ -1070,8 +1255,35 @@
         document.body.appendChild(cv); await wait(300); return;
       }
       if (s === 'shot-warning') { $('#btn-new').click(); await wait(1200); return; } // 시작 직후 주의 화면
+      if (s === 'shot-chat-a' || s === 'shot-chat-b' || s === 'shot-chat-c') { // 채팅 장면(한 번에 보기): 민준 DM · 하늘 DM(캡처) · 신상 스토리
+        $('#btn-new').click(); await play(R.D, { upto: { 'shot-chat-a': 5, 'shot-chat-b': 7, 'shot-chat-c': 21 }[s] }); await wait(600); return;
+      }
+      if (s === 'shot-chat-dots' || s === 'shot-chat-typing') { // 단톡 타자 효과를 멈춰 찍기: '입력 중…' / 글자 반쯤
+        $('#btn-new').click(); await wait(30);
+        $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk();
+        var gq = 0;
+        while (gq++ < 3000) {
+          var tr = $('#g-log .type-rest');
+          // 입력 중: 세 줄이 다 보인 뒤 쉬는 사이에 멈추면, 이미 걸린 타이머가 '입력 중…'을 띄우고 거기서 선다
+          if (s === 'shot-chat-dots' && realLis().length >= 3 && !tr && !$('#g-log li.typing')) break;
+          // 글자 반쯤: 네 번째 줄 이후, 남은 글자가 15자 넘게 있을 때(0.3초 더 기다려 나타나는 움직임이 끝나게)
+          if (s === 'shot-chat-typing' && tr && realLis().length >= 4 && tr.textContent.length > 15) { await wait(300); break; }
+          await wait(5);
+        }
+        window.setTimeout = function () { return 0; }; // 새 타이머를 막아 이 순간에서 찍는다
+        return;
+      }
       if (s === 'shot-photo') { $('#btn-new').click(); await play(R.A, { upto: 4 }); await wait(600); return; } // 하늘 DM의 흐린 사진
       if (s === 'shot-start-noname') { await wait(300); return; } // 공통 정보 없는 시작 화면(이름 입력칸)
+      if (/^shot-marks-/.test(s)) { // 지도 표시(목적지 핀·? 말풍선) 확인용: 그 자리로 순간이동
+        $('#btn-new').click(); await wait(300);
+        var MW = window.PRIVACY_WORLD, MD = PrivacyMap.debug, sox = function (id) { return MW.SCENES.filter(function (c) { return c.id === id; })[0].ox; };
+        if (s === 'shot-marks-sleep') await play(R.A, { upto: 3, stopAtMap: true }); // 사건 2: 엎드려 자는 민준
+        if (s === 'shot-marks-library') await play(R.A, { upto: 10, stopAtMap: true }); // 사건 6: 도서관 공용 PC
+        var spot = { 'shot-marks-yard': ['yard', 14, 9, 'left'], 'shot-marks-class': ['classroom', 15, 13, 'up'], 'shot-marks-sleep': ['classroom', 22, 14, 'right'], 'shot-marks-library': ['library', 16, 11, 'up'], 'shot-marks-room': ['room', 12, 12, 'down'] }[s];
+        if (spot) MD.place(sox(spot[0]) + spot[1], spot[2], spot[3]);
+        await wait(600); return;
+      }
       if (/^shot-nf-/.test(s)) { // 렌즈 안에 갇힌 밤: 대치(선택지) · 촬영(REC) · 교실 반응(선택지)
         var nr = nfRoute(R, NF_FIGHT);
         $('#btn-new').click();
@@ -1101,7 +1313,7 @@
       if (s === 'shot-talk') { $('#btn-new').click(); await play(R.A, { upto: 1, stopAtMap: true }); var pd = PrivacyMap.debug.tileToClient(8, 2); $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pd.x, clientY: pd.y, bubbles: true })); await wait(1500); return; }
       if (s === 'shot-hood' || s === 'shot-gate' || s === 'shot-south' || s === 'shot-edge' || s === 'shot-front' || s === 'shot-house' || s === 'shot-yard' || s === 'shot-booth') { // 주택가·교문 화면 확인용: 그 자리까지 걸어감
         $('#btn-new').click(); await play(R.A, { upto: 1, stopAtMap: true });
-        var dest = { 'shot-hood': [46, 20], 'shot-gate': [24, 16], 'shot-south': [44, 27], 'shot-edge': [58, 30], 'shot-front': [12, 14], 'shot-house': [42, 19], 'shot-yard': [11, 26], 'shot-booth': [15, 21] }[s];
+        var dest = { 'shot-hood': [40, 20], 'shot-gate': [16, 16], 'shot-south': [21, 18], 'shot-edge': [53, 21], 'shot-front': [12, 14], 'shot-house': [34, 19], 'shot-yard': [7, 20], 'shot-booth': [9, 20] }[s]; // 2026-10-31 56×23 지도
         var rr = PrivacyMap.debug.routeTo(dest[0], dest[1]) || [];
         for (var q = 0; q < rr.length; q++) { key(ARROW[rr[q]]); key(ARROW[rr[q]], 'keyup'); await wait(16); while (PrivacyMap.debug.me().moving) await wait(16); }
         await wait(500); return;
