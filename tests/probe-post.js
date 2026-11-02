@@ -71,6 +71,8 @@
 
   // 대화창이 열려 있으면 ▼를 눌러 끝까지 넘긴다
   function realLis() { return $$('#g-log li').filter(function (li) { return !li.classList.contains('typing'); }); } // '입력 중…' 줄 빼고
+  // 대화창에서 말하는 사람: 이름 탭, 또는 한 번에 보기로 여러 줄이 쌓였을 때 첫 줄 앞 굵은 이름(2026-11-02: 할 말 끝난 사람은 '다음 목적지' 한 줄이 붙음)
+  function talkWho(re) { var n = $('#talk .talk-name'), b = $('#talk .talk-text p b'); return !!((n && !n.hidden && re.test(n.textContent)) || (b && re.test(b.textContent))); }
   async function passTalk(o) { var g = 0; while ($('#talk') && !$('#talk').hidden && g++ < 60) { if (o) o.talkLines = (o.talkLines || 0) + $$('#talk .talk-text p').length; $('#btn-talk-next').click(); await wait(20); } }
   function key(k, type) { document.dispatchEvent(new KeyboardEvent(type || 'keydown', { key: k, bubbles: true })); }
   var ARROW = { up: 'ArrowUp', down: 'ArrowDown', left: 'ArrowLeft', right: 'ArrowRight' };
@@ -293,7 +295,7 @@
       var cs = castOf('saebom'), pt = PrivacyMap.debug.tileToClient(cs.x, cs.y); // 새봄 자리
       $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pt.x, clientY: pt.y, bubbles: true }));
       var g = 0; while ($('#talk').hidden && g++ < 300) await wait(20);
-      ok(!$('#talk').hidden && /새봄/.test($('#talk .talk-name').textContent), '새봄을 누르면 걸어가서 말 걸기 ' + JSON.stringify([pt, PrivacyMap.debug.me()]));
+      ok(!$('#talk').hidden && talkWho(/새봄/), '새봄을 누르면 걸어가서 말 걸기 ' + JSON.stringify([pt, PrivacyMap.debug.me()]));
       await passTalk();
       $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk(); await wait();
       ok(view() === 'v-game' && PrivacyApp.state().scene === 'c1_e1_a', '침대에 가면 정산 장면 시작');
@@ -321,7 +323,7 @@
       $('#m-canvas').dispatchEvent(new PointerEvent('pointerdown', { clientX: pd.x, clientY: pd.y, bubbles: true }));
       var gt = 0; while ((!$('#talk') || $('#talk').hidden) && gt++ < 300) await wait(20);
       ok(!!$('#talk') && !$('#talk').hidden && /\S/.test($('#talk .talk-text').textContent), '말 걸기 결과가 대화창에 나옴');
-      ok(!!$('#talk .talk-name') && /하늘/.test($('#talk .talk-name').textContent), '대화창 이름 탭');
+      ok(talkWho(/하늘/), '대화창 이름 탭(한 번에 보기로 여러 줄이 쌓이면 첫 줄 앞 이름) ' + $('#talk').textContent.slice(0, 40));
       ok($('#talk').getBoundingClientRect().height >= 118, '한 줄이어도 넉넉한 대화창 높이 ' + Math.round($('#talk').getBoundingClientRect().height));
       key(' '); await wait(30);
       ok($('#talk').hidden && view() === 'v-map', 'Space로 대화창 닫힘, 맵 그대로');
@@ -423,7 +425,7 @@
       await play(R.A, { upto: 1, stopAtMap: true });
       $('#btn-map-skip').click(); await wait(); $('#btn-map-act').click(); await wait(); await passTalk(); await wait(50);
       var f1 = PrivacyMap.debug.stage();
-      ok(view() === 'v-game' && f1.place === 'room' && f1.tint === 'evening', '하교해 침대 → 내 방 저녁 무대 ' + JSON.stringify(f1));
+      ok(view() === 'v-game' && f1.place === 'room' && f1.tint === 'night', '하교해 침대 → 내 방 밤 무대(저녁 8:12) ' + JSON.stringify(f1));
       await play(R.A, { from: 1, upto: 3 });
       ok(PrivacyApp.state().scene === 'c1_e2_a' && $('#g-phone').hidden && $$('#g-dock .choice').length > 0, '장소 장면: 폰 없이 대화창 → 선택지');
       ok(PrivacyMap.debug.stage().place === 'classroom', '장소 장면 무대: 교실');
@@ -1157,6 +1159,102 @@
       ok(heads.c3_e8_i === '민준', '다음 날 민준 개인톡은 그대로 ' + heads.c3_e8_i);
       ok(view() === 'v-ending' && /엔딩 D/.test($('#e-eyebrow').textContent), '엔딩 D');
       ok(/퍼뜨린 사람이기도/.test($('#e-body').textContent) && /사과하고/.test($('#e-body').textContent) && /협조/.test($('#e-body').textContent), '엔딩 D 본문: 양면 + 책임지는 행동');
+    }
+
+    else if (s === 'emphasis') {
+      // 2026-11-02 강조 표시 [[…]] → <strong class="em">(굵게만): 화면 어디에도 [[ ]] 기호가 안 보이고, 쳐지는 중에도 굵게, 화면 읽기에는 맨 글자 한 번
+      var EMx = window.PrivacyEmph, STx = window.PRIVACY_STORY, Ex = window.PrivacyEngine;
+      var BOXES = ['#g-log', '#g-live', '#g-head', '#g-dock', '#talk', '#cut', '#m-say', '#c-summary', '#e-summary', '#e-body', '#e-events', '#finale', '#p-list', '#v-reflect'];
+      var raw = [], seenStrong = {}, noStrong = [], badStyle = [], talkStrong = 0, scans = 0;
+      var MARK = /\[\[|\]\]/;
+      function scan() {
+        scans++;
+        BOXES.forEach(function (q) {
+          var n = $(q);
+          if (n && MARK.test(n.textContent) && raw.length < 5) { var t = n.textContent, at = t.search(MARK); raw.push(q + ' “' + t.slice(Math.max(0, at - 12), at + 14) + '”'); }
+        });
+        var bt = (PrivacyMap.debug.stage().bubbleTexts || []).join(' ');
+        if (MARK.test(bt) && raw.length < 5) raw.push('맵 말풍선 “' + bt + '”');
+        $$('#g-log li').forEach(function (li) {
+          if (li._line && EMx.has(li._line.text) && !li.querySelector('strong.em') && noStrong.length < 5) noStrong.push(EMx.plain(li._line.text).slice(0, 20));
+        });
+        $$('strong.em').forEach(function (b) {
+          seenStrong[b.textContent] = 1;
+          if (b._emChecked) return;
+          b._emChecked = true;
+          if (b.closest('#talk')) talkStrong++;
+          var cs = getComputedStyle(b), ps = getComputedStyle(b.parentNode);
+          // 굵기만 다르고 색은 같다(정답 신호 금지). 아직 안 쳐진 자리(.type-rest)는 visibility로 숨김
+          if (!(Number(cs.fontWeight) >= 700) || cs.color !== ps.color || b.children.length) badStyle.push(b.textContent + ' ' + cs.fontWeight + ' ' + cs.color + '/' + ps.color);
+        });
+      }
+      new MutationObserver(scan).observe(document.body, { childList: true, subtree: true, characterData: true });
+
+      // 1) 폰 메시지 타자 효과: c1_e1_a에서 dm → 반응 해설 “[[새봄이와의 개인톡에만]] 계좌번호를 보냈다.”
+      $('#btn-new').click();
+      await play(R.D, { upto: 1 });
+      PrivacyApp.setReduceMotion(false); PrivacyApp.setSpeed('normal');
+      var narrSrc = STx.scenes.c1_e1_a.choices.filter(function (c) { return c.id === 'dm'; })[0].react[0];
+      var narrRaw = Ex.normLine(narrSrc, STx).text, narrPlain = EMx.plain(narrRaw);
+      ok(EMx.has(narrRaw) && narrPlain.indexOf('[[') < 0, '시험 줄에 강조 표시가 있음: ' + narrPlain);
+      $$('#g-dock .choice').filter(function (b) { return b.getAttribute('data-choice') === 'dm'; })[0].click();
+      var gw = 0, li = null;
+      while (gw++ < 400) { li = $$('#g-log li.narr').filter(function (x) { return x._line && x._line.text === narrRaw; })[0]; if (li && li.querySelector('.type-rest')) break; await wait(5); }
+      ok(!!li && !!li.querySelector('.type-rest'), '강조가 든 해설 줄이 한 글자씩 쳐지는 중');
+      var frames = 0, frameBad = [], sawBoldTyping = false, sawSplit = false;
+      gw = 0;
+      while (li && li.querySelector('.type-rest') && gw++ < 400) {
+        var shown = li.firstChild, rest = li.querySelector('.type-rest');
+        frames++;
+        if (MARK.test(li.textContent)) frameBad.push('기호 보임');
+        if (shown.textContent + rest.textContent !== narrPlain) frameBad.push('보인 글자+남은 글자 ≠ 전체: ' + shown.textContent + '|' + rest.textContent);
+        Array.prototype.forEach.call(shown.childNodes.length ? shown.childNodes : [], function (c) { if (c.nodeType === 1 && !(c.tagName === 'STRONG' && c.className === 'em' && !c.children.length)) frameBad.push('이상한 요소 ' + c.tagName); });
+        if (shown.querySelector('strong.em')) sawBoldTyping = true;
+        if (shown.querySelector('strong.em') && rest.querySelector('strong.em')) sawSplit = true; // 강조 낱말 한가운데까지 쳐진 순간
+        if (Array.from(shown.textContent).length >= 6) break;
+        await wait(3);
+      }
+      ok(frames >= 2 && !frameBad.length, '치는 동안 [[ ]] 기호·깨진 태그 없음(' + frames + '번 확인) ' + frameBad.slice(0, 2).join(' / '));
+      ok(sawBoldTyping, '치는 동안에도 강조 부분이 굵게 보임');
+      ok(sawSplit, '강조 낱말 중간까지 쳐진 순간에도 앞은 굵게·뒤는 자리만(굵게 예약)');
+      ok(li && li.getAttribute('aria-hidden') === 'true' && $$('#g-live p').every(function (p) { return p.textContent.indexOf(narrPlain) < 0; }), '치는 동안은 화면 읽기에 안 읽힘');
+      $('#g-log').click(); await wait();
+      var strongs = li ? li.querySelectorAll('strong.em') : [];
+      ok(li && !li.querySelector('.type-rest') && li.textContent === narrPlain && strongs.length === 1 && strongs[0].textContent === '새봄이와의 개인톡에만',
+        '누르면 완성: 맨 글자 그대로 + 강조 1개 “' + (strongs[0] || {}).textContent + '”');
+      gw = 0; while (!$('#btn-next') && gw++ < 2000) await wait(10);
+      var lives = $$('#g-live p').map(function (p) { return p.textContent; });
+      ok(lives.filter(function (t) { return t === narrPlain; }).length === 1, '화면 읽기: 다 쳐진 줄을 맨 글자로 한 번만');
+      ok(!lives.some(function (t) { return MARK.test(t); }), '화면 읽기 문장에 [[ ]] 없음');
+
+      // 2) 대화창 타자 효과: 이야기 속 장소 장면 대사(c2_e4_a “[[다른 반 애들도]] 벌써 다 봄”)
+      var tSrc = STx.scenes.c2_e4_a.lines.map(function (l) { return Ex.normLine(l, STx); }).filter(function (l) { return EMx.has(l.text); })[0];
+      var tPlain = EMx.plain(tSrc.text);
+      var tDone = PrivacyTalk.open([{ who: tSrc.who, name: STx.characters[tSrc.who].name, text: tSrc.text }], {});
+      var tt = $('#talk .talk-text');
+      gw = 0; while (!(tt.querySelector('.type-rest') && tt.querySelector('p > span strong.em')) && PrivacyTalk.typing() && gw++ < 300) await wait(3);
+      ok(PrivacyTalk.typing() && !MARK.test(tt.textContent) && !!tt.querySelector('strong.em'), '대화창: 치는 동안 굵게, [[ ]] 없음');
+      ok($('#talk .talk-live').textContent === '', '대화창: 치는 동안 화면 읽기 비어 있음');
+      $('#btn-talk-next').click(); await wait();
+      var ts = tt.querySelectorAll('strong.em');
+      ok(!PrivacyTalk.typing() && tt.textContent === tPlain && ts.length === 1 && ts[0].textContent === '다른 반 애들도', '대화창: 누르면 완성 + 강조 “' + (ts[0] || {}).textContent + '”');
+      ok($('#talk .talk-live').textContent === STx.characters[tSrc.who].name + ': ' + tPlain, '대화창 화면 읽기 = 이름: 맨 글자 ' + $('#talk .talk-live').textContent);
+      $('#btn-talk-next').click(); await tDone;
+
+      // 3) 나머지 경로(나쁜 길 D)를 끝까지: 어느 화면에도 [[ ]]가 안 보이고, 강조 줄에는 굵은 글씨가 있다
+      PrivacyApp.setSpeed('instant'); PrivacyApp.setReduceMotion(true);
+      await play(R.D, { from: 2 }); // 0 = pro_1, 1 = 위에서 직접 고른 c1_e1_a#dm
+      await finishChecks('D', R.D.length);
+      scan();
+      ok(!raw.length, '경로 전체: 화면에 [[ ]] 기호 없음(' + scans + '번 확인) ' + raw.join(' / '));
+      ok(!noStrong.length, '강조 표시가 있는 줄은 모두 굵은 글씨로 ' + noStrong.join(' / '));
+      ok(!badStyle.length, '강조는 굵게만(색 같음): ' + badStyle.slice(0, 3).join(' / '));
+      var want = ['교복 이름표까지', '1시간 만에 조회 312회', '다른 학교 다니는 사촌까지', '가족 이야기, 다른 반 친구와 다툰 이야기', '모르는 번호로 메시지 4개', '#솔빛축제 태그', '다른 단톡방에도', '조회 204회'];
+      var missing = want.filter(function (w) { return !seenStrong[w]; });
+      ok(!missing.length, '경로 D의 강조가 실제로 보임(' + Object.keys(seenStrong).length + '종) 빠짐: ' + missing.join(', '));
+      ok(talkStrong > 0, '장소 장면 대화창에도 강조(' + talkStrong + ')');
+      ok(!$$('#g-dock .choice strong, .path-opts strong.em, .finale-pick strong.em').length, '선택지·지나온 길의 선택에는 강조 없음');
+      ok(!MARK.test(ls('ethicity.result.privacy') || ''), '공통 결과 카드 글자에 [[ ]] 없음');
     }
 
     else if (s === 'typing') {
