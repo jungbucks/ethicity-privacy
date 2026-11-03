@@ -106,15 +106,16 @@
 
   /* 출입구: 이 칸에 들어서면 다른 장면의 칸으로 옮겨진다 */
   var DOORS = {};
-  function door(cells, scene, to, dir, label) { cells.forEach(function (c) { DOORS[(S[c[0]].ox + c[1]) + ',' + c[2]] = { to: [S[scene].ox + to[0], to[1]], dir: dir, label: label, scene: scene }; }); }
-  door([['classroom', 15, 17], ['classroom', 16, 17]], 'yard', [7, 5], 'down', '마당으로');
-  door([['yard', 6, 4], ['yard', 7, 4], ['yard', 8, 4]], 'classroom', [15, 16], 'up', '교실로');
-  door([['library', 14, 17], ['library', 15, 17], ['library', 16, 17], ['library', 17, 17]], 'yard', [26, 5], 'down', '마당으로');
-  door([['yard', 25, 4], ['yard', 26, 4], ['yard', 27, 4]], 'library', [15, 16], 'up', '도서관으로');
-  door([['yard', 14, 17], ['yard', 15, 17], ['yard', 16, 17], ['yard', 17, 17]], 'village', [1, 6], 'right', '교문 밖으로');
-  door([['village', 0, 5], ['village', 0, 6]], 'yard', [15, 16], 'up', '학교로'); // 그림의 길이 왼쪽 끝에서 들어오는 자리(그 아래는 나무)
-  door([['village', 24, 11], ['village', 25, 11]], 'room', [15, 16], 'up', '집 안으로');
-  door([['room', 14, 17], ['room', 15, 17], ['room', 16, 17], ['room', 17, 17]], 'village', [24, 12], 'down', '밖으로');
+  // say: 건너편에 도착했을 때 무대 위에 잠깐 뜨는 한 줄(map.js finishStep, 2026-11-02 — 예전엔 '집 안으로' 말고는 모두 '밖으로 나왔다.')
+  function door(cells, scene, to, dir, label, say) { cells.forEach(function (c) { DOORS[(S[c[0]].ox + c[1]) + ',' + c[2]] = { to: [S[scene].ox + to[0], to[1]], dir: dir, label: label, scene: scene, say: say }; }); }
+  door([['classroom', 15, 17], ['classroom', 16, 17]], 'yard', [7, 5], 'down', '마당으로', '마당으로 나왔다.');
+  door([['yard', 6, 4], ['yard', 7, 4], ['yard', 8, 4]], 'classroom', [15, 16], 'up', '교실로', '교실에 들어왔다.');
+  door([['library', 14, 17], ['library', 15, 17], ['library', 16, 17], ['library', 17, 17]], 'yard', [26, 5], 'down', '마당으로', '마당으로 나왔다.');
+  door([['yard', 25, 4], ['yard', 26, 4], ['yard', 27, 4]], 'library', [15, 16], 'up', '도서관으로', '도서관에 들어왔다.');
+  door([['yard', 14, 17], ['yard', 15, 17], ['yard', 16, 17], ['yard', 17, 17]], 'village', [1, 6], 'right', '교문 밖으로', '교문 밖으로 나왔다.');
+  door([['village', 0, 5], ['village', 0, 6]], 'yard', [15, 16], 'up', '학교로', '학교에 도착했다.'); // 그림의 길이 왼쪽 끝에서 들어오는 자리(그 아래는 나무)
+  door([['village', 24, 11], ['village', 25, 11]], 'room', [15, 16], 'up', '집 안으로', '우리 집에 들어왔다.');
+  door([['room', 14, 17], ['room', 15, 17], ['room', 16, 17], ['room', 17, 17]], 'village', [24, 12], 'down', '밖으로', '밖으로 나왔다.');
 
   /* 구역 이름(화면 위 표시용): 장면 이름, 마당만 조금 나눔 */
   function areaName(xx, yy) {
@@ -214,23 +215,23 @@
       cast: [who('saebom', 'classroom', 12, 8, 'down'), who('haneul', 'classroom', 19, 9, 'left')],
       greet: '저녁을 먹고 침대에 눕자 휴대폰이 울렸다.' },
     c1_e2_a: { time: 'D-3 · 방과 후', mission: '교실에서 엎드려 자는 민준이 살펴보기', target: { npc: 'minjun' }, spawn: 'gate', tint: 'day',
-      cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 27, 12, 'right'),
+      cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 28, 8, 'down'),
         who('saebom', 'classroom', 12, 8, 'down'), who('jiho', 'classroom', 10, 9, 'down')] },
     c1_e3_a: { time: 'D-2 · 하교 시간', mission: '집에 가서 쉬기 — 교문을 지나 마을 길 끝 우리 집으로', target: { obj: 'bed' }, spawn: 'classroom', tint: 'evening',
-      cast: [who('saebom', 'classroom', 20, 8, 'down'), who('haneul', 'yard', 19, 8, 'down'), who('minjun', 'yard', 11, 14, 'up')],
+      cast: [who('saebom', 'classroom', 20, 8, 'down'), who('haneul', 'yard', 19, 8, 'down'), who('minjun', 'yard', 7, 14, 'up')],
       enterLine: '하루 종일 부스를 꾸몄더니 피곤하다. 침대에 눕자 휴대폰이 울렸다.' },
     c2_e4_a: { time: 'D-1 · 오후', mission: '매점 앞에서 손짓하는 하늘이에게 가기', target: { npc: 'haneul' }, spawn: 'gate', tint: 'day',
-      cast: [who('haneul', 'yard', 22, 14, 'left'), who('jiho', 'yard', 8, 14, 'up'),
-        who('minjun', 'yard', 11, 14, 'up'), who('saebom', 'classroom', 12, 8, 'down')] },
+      cast: [who('haneul', 'yard', 22, 14, 'left'), who('jiho', 'yard', 7, 14, 'up'),
+        who('minjun', 'yard', 4, 11, 'right'), who('saebom', 'classroom', 12, 8, 'down')] },
     c2_e5_a: { time: 'D-1 · 저녁', mission: '집에 가서 부스 안내문 쓰기 — 내 방 컴퓨터', target: { obj: 'mypc' }, spawn: 'road', tint: 'night',
-      cast: [who('jiho', 'yard', 8, 14, 'up'), who('minjun', 'yard', 11, 14, 'up')] },
+      cast: [who('jiho', 'yard', 7, 14, 'up'), who('minjun', 'yard', 4, 11, 'right')] },
     c2_e6_a: { time: '축제 당일 · 아침', mission: '도서관 공용 PC 3번에서 안내문 출력하기', target: { obj: 'pc3' }, spawn: 'gate', tint: 'day',
-      cast: [who('friend', 'library', 23, 8, 'right'), who('saebom', 'yard', 8, 14, 'up'), who('jiho', 'yard', 9, 14, 'up')] },
+      cast: [who('friend', 'library', 23, 8, 'right'), who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')] },
     c3_e7_a: { time: '축제 당일 · 오후', mission: '마당 부스 옆 하늘이네에게 가기', target: { npc: 'haneul' }, spawn: 'hall', tint: 'day',
-      cast: [who('haneul', 'yard', 15, 13, 'left'), who('friend', 'yard', 16, 13, 'left'),
-        who('minjun', 'classroom', 29, 11, 'up'), who('saebom', 'yard', 8, 14, 'up'), who('jiho', 'yard', 11, 14, 'up')] },
+      cast: [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 17, 12, 'left'),
+        who('minjun', 'classroom', 29, 11, 'up'), who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')] },
     c3_e8_a: { time: '축제 당일 · 저녁', mission: '집에 가서 쉬기 — 내 방 컴퓨터', target: { obj: 'mypc' }, spawn: 'yard', tint: 'evening',
-      cast: [who('haneul', 'yard', 15, 13, 'left'), who('teacher', 'yard', 16, 8, 'down')],
+      cast: [who('haneul', 'yard', 16, 13, 'left'), who('teacher', 'yard', 16, 8, 'down')],
       castLines: { teacher: '고생 많았어. 이제 집에 가서 푹 쉬렴.' } }, // 축제가 끝난 저녁
     c3_e9_a: { time: '축제 다음 날 · 오전', mission: '교실 내 자리에 앉기', target: { obj: 'desk8' }, spawn: 'gate', tint: 'day',
       greet: '자리에 앉자 휴대폰 알림이 연달아 울렸다.',
@@ -260,8 +261,8 @@
   };
   function only(list, whos) { return list.filter(function (c) { return whos.indexOf(c.who) >= 0; }); }
   var ATDESK = P('room', 25, 10, 'up'); // 내 방 책상 컴퓨터 앞
-  var BOOTH = [who('haneul', 'yard', 15, 13, 'left'), who('friend', 'yard', 16, 13, 'left'),
-    who('saebom', 'yard', 8, 14, 'up'), who('jiho', 'yard', 11, 14, 'up')];
+  var BOOTH = [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 17, 12, 'left'),
+    who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')];
 
   var STAGES = {
     // 첫 단톡방: 새봄·하늘·지호·민준이 모두 주인공 둘레에(확대 무대에서 한 화면에 보이게 — 2026-11-01 사용자)
@@ -270,8 +271,8 @@
       bubbles: [{ on: '다 올린다', who: 'jiho', text: '…' }, { on: '넌 뭐 할래', who: 'saebom', text: '👀' }] },
     c1_e1_a: { place: 'room', tint: 'night', cast: [] }, // 'D-4 · 저녁 8:12' — 8시 이후는 밤(timeTint와 같은 기준, 2026-11-02)
     c1_e1_b: { place: 'room', tint: 'night', cast: [] },
-    c1_e2_a: { place: 'classroom', tint: 'day', me: P('classroom', 30, 12, 'left'),
-      cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 27, 12, 'right'),
+    c1_e2_a: { place: 'classroom', tint: 'day', me: P('classroom', 28, 11, 'right'),
+      cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 28, 8, 'down'),
         who('saebom', 'classroom', 12, 8, 'down'), who('jiho', 'classroom', 10, 9, 'down')] },
     c1_e2_b: { place: 'room', tint: 'night', card: '그날 밤 · 내 방', cast: [] },
     c1_e2_d: { place: 'road', tint: 'day', card: 'D-2 아침 · 등굣길', cast: [] },

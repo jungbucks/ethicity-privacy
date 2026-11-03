@@ -25,7 +25,7 @@
   /* ── 상태 ───────────────────────── */
   var player = S.readPlayer(CFG.defaultNickname);
   var progress = { v: 1, run: null, explored: {}, endingsSeen: [], pos: null };
-  var settings = { speed: 'normal', reduceMotion: false, look: null, sound: false, nickname: '' };
+  var settings = { speed: 'normal', reduceMotion: false, look: null, sound: false, nickname: '', joystick: true }; // joystick: 터치 기기 가상 조이스틱 표시(2026-11-02)
   var NAME_MAX = 10;
   // 이 게임에서만 쓰는 이름(공통 플레이어 정보가 없을 때). 제어 문자·앞뒤 공백을 빼고 10자까지
   function cleanName(v) { return typeof v === 'string' ? v.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, NAME_MAX) : ''; }
@@ -67,13 +67,18 @@
       }
     } else if (p) noticeMsgs.push('저장된 진행 기록 형식이 맞지 않아 새로 시작해요.');
 
+    settings.sound = true; // 효과음 기본 켜짐(2026-11-02) — 저장된 설정이 있으면 아래에서 다시 정함
     var st = S.readJSON(S.KEYS.settings).value;
     if (st && typeof st === 'object') {
       if (SPEED_MS.hasOwnProperty(st.speed)) settings.speed = st.speed;
       settings.reduceMotion = !!st.reduceMotion;
-      settings.sound = st.sound === true;
+      // 효과음 기본 켜짐(2026-11-02 사용자 결정): 메뉴에서 직접 고른 적(soundSet)이 있을 때만 저장값을 따른다.
+      // 예전엔 기본 꺼짐이 그대로 저장돼(sound:false) 직접 끈 것과 구분이 안 되므로, soundSet 없는 옛 저장은 한 번 새 기본(켜짐)으로
+      settings.soundSet = st.soundSet === true;
+      settings.sound = settings.soundSet ? st.sound === true : true;
       if (st.look === 'm' || st.look === 'f') settings.look = st.look;
       settings.nickname = cleanName(st.nickname);
+      settings.joystick = st.joystick !== false;
     } else if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       settings.reduceMotion = true;
     }
@@ -442,9 +447,22 @@
     if (device === 'none') return { x: 0.5, y: 0.36 };
     return $('stage').clientWidth <= 720 ? { x: 0.5, y: 0.17 } : { x: 0.7, y: 0.36 }; // 넓은 화면: 폰(왼쪽) 오른쪽 빈 곳
   }
-  /* ── 효과음: 공통 팩 WAV(js/sfx.js). 메시지 하나당 'paper' 한 번. 기본 꺼짐 ── */
-  function sfx(id) { if (window.PrivacySfx) { window.PrivacySfx.setEnabled(settings.sound); window.PrivacySfx.play(id); } }
-  function chime() { sfx('paper'); }
+  /* ── 효과음(js/sfx.js). 기본 켜짐(메뉴에서 끔) ──
+   * 메시지 알림: 폰·모니터 창(장면 device가 none이 아님)에 친구·상대가 보낸 줄이 올 때만. 그 장면 첫 줄 = 'msg'(두 음), 이어지는 줄 = 'tick'(작게).
+   * 내가 보낸 줄(me)·해설(narr)·시스템(sys)·속마음(thought)·설정 카드(setting)·장소 대화창 줄(talk)에는 소리 없음. */
+  function sfx(id, force) { if (window.PrivacySfx) { window.PrivacySfx.setEnabled(settings.sound); window.PrivacySfx.play(id, force); } }
+  var chimeScene = null;
+  function incoming(line) {
+    var who = line.who;
+    return !line.talk && !!who && who !== 'me' && who !== 'narr' && who !== 'sys' && line.kind !== 'thought' && line.kind !== 'setting' &&
+      !!progress.run && deviceOf(progress.run.scene) !== 'none';
+  }
+  function chime(line) {
+    if (!incoming(line)) return;
+    var sc = progress.run.scene, first = sc !== chimeScene;
+    chimeScene = sc;
+    sfx(first ? 'msg' : 'tick');
+  }
   window.PrivacySfxDoor = function () { sfx('door'); };
   // 화면에 붙일 줄. _say = 화면 읽기용 한 문장, _typeEl/_text = 타자 효과를 줄 자리(해설·말풍선만)
   function nodeOf(line) {
@@ -475,7 +493,7 @@
     var who = line.who, text = plain(fill(line.text || ''));
     if (who && who !== 'narr' && who !== 'sys' && who !== 'me') {
       window.PrivacyMap.bubble(who, spokenDevice ? text : '📱…', !spokenDevice);
-      if (!line.talk) chime();
+      chime(line);
     }
     (st.bubbles || []).forEach(function (b) { if (text.indexOf(b.on) >= 0) window.PrivacyMap.bubble(b.who, b.text); });
   }
@@ -1036,6 +1054,8 @@
     Array.prototype.forEach.call(document.querySelectorAll('input[name=speed]'), function (r) { r.checked = r.value === settings.speed; });
     $('opt-motion').checked = settings.reduceMotion;
     $('opt-sound').checked = settings.sound;
+    $('opt-joystick').checked = settings.joystick;
+    $('opt-joystick-row').hidden = !window.PrivacyMap.isTouch(); // PC(터치 없음)에서는 조이스틱이 없으니 설정도 숨김
   }
 
   // 새로 시작할 때마다: 어두운 화면에 주의 안내 → '확인했어요'를 눌러야 시작(이어 하기에는 없음)
@@ -1097,11 +1117,13 @@
 
     $('btn-menu').addEventListener('click', function () { syncMenu(); openOverlay('menu'); });
     $('btn-menu-close').addEventListener('click', function () { closeOverlay('menu'); });
+    $('menu').addEventListener('click', function (e) { if (e.target === $('menu')) closeOverlay('menu'); }); // 바깥 어두운 곳을 눌러도 닫힘(2026-11-02 모바일)
     Array.prototype.forEach.call(document.querySelectorAll('input[name=speed]'), function (r) {
       r.addEventListener('change', function () { settings.speed = r.value; applySettings(); saveSettings(); });
     });
     $('opt-motion').addEventListener('change', function () { settings.reduceMotion = $('opt-motion').checked; applySettings(); saveSettings(); });
-    $('opt-sound').addEventListener('change', function () { settings.sound = $('opt-sound').checked; saveSettings(); if (settings.sound) sfx('tap'); });
+    $('opt-sound').addEventListener('change', function () { settings.sound = $('opt-sound').checked; settings.soundSet = true; saveSettings(); if (settings.sound) sfx('msg', true); }); // 켜면 알림음 미리듣기
+    $('opt-joystick').addEventListener('change', function () { settings.joystick = $('opt-joystick').checked; saveSettings(); window.PrivacyMap.setJoystick(); });
     $('btn-menu-home').addEventListener('click', function () { $('menu').hidden = true; renderStart(); });
     $('btn-menu-restart').addEventListener('click', function () {
       $('menu').hidden = true;
@@ -1157,6 +1179,7 @@
     evalCond: function (c) { return E.evalCond(c, progress.run); },
     instant: function () { return settings.speed === 'instant'; },
     reduceMotion: function () { return settings.reduceMotion; },
+    joystick: function () { return settings.joystick; },
     loadPos: function () { return progress.pos; },
     savePos: function (p) { progress.pos = p; clearTimeout(posTimer); posTimer = setTimeout(saveProgress, 400); },
     onEnter: function () { clearTimeout(posTimer); setRun(E.advance(story, progress.run)); routeRun(true); }
