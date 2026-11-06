@@ -1,7 +1,7 @@
 // PNG → webp 사본 만들기(윤리시티 privacy 전용). 원본 PNG는 그대로 두고 같은 자리에 .webp를 쓴다.
 //   node privacy/tools/to-webp.mjs assets/school assets/outdoor ... [--q 0.82]
 //   경로는 privacy/ 기준. 폴더면 그 안의 .png 전부(preview.png 제외), 파일이면 그 파일만.
-//   공통 팩 그림(shared/...png)도 받는다 — 공통 팩은 고치지 않고 webp 사본만 assets/shared-webp/<같은 하위 경로>.webp에 둔다
+//   공통 팩 그림(../shared/...png)도 받는다 — 공통 팩은 고치지 않고 webp 사본만 assets/shared-webp/<같은 하위 경로>.webp에 둔다
 //   (2026-11-02: 교실·도서관 배경 PNG 1.7·2.0MB가 느린 학교망에서 장면마다 10초 넘게 빈 화면을 만들어서).
 // 그림 크기(픽셀)는 바꾸지 않는다 — 코드에 박힌 잘라내기 좌표가 그대로 맞도록.
 // 끝나면 js/webp-list.js(게임이 .webp를 고를 목록)를 assets 아래 실제 .webp 파일로 다시 만든다.
@@ -19,7 +19,7 @@ const args = process.argv.slice(2);
 const qi = args.indexOf('--q');
 const Q = qi >= 0 ? Number(args.splice(qi, 2)[1]) : 0.82;
 const SKIP = /(^|[\\/])(preview|.*-preview)\.png$/;
-const SHARED = 'shared/', SHARED_OUT = 'assets/shared-webp/';
+const SHARED = '../shared/', SHARED_OUT = 'assets/shared-webp/';
 // privacy/ 기준 png 경로 → webp를 쓸 자리(공통 팩은 사본 폴더로)
 const webpOf = (f) => (f.startsWith(SHARED) ? SHARED_OUT + f.slice(SHARED.length) : f).replace(/\.png$/, '.webp');
 
@@ -69,7 +69,7 @@ if (files.length) {
 }
 
 // 게임이 .webp를 고를 목록: assets 아래 .png 옆에 .webp가 있는 것(값 1 = 같은 자리 .webp)
-//   + assets/shared-webp/ 아래 webp 사본(값 = 사본 경로, 열쇠 = 공통 팩 원래 주소 shared/...png — 원본이 있을 때만)
+//   + assets/shared-webp/ 아래 webp 사본(값 = 사본 경로, 열쇠 = 공통 팩 원래 주소 ../shared/...png — 원본이 있을 때만)
 const list = [];
 (function walk(dir) {
   for (const n of fs.readdirSync(dir)) {

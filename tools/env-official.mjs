@@ -16,7 +16,7 @@ const sharp = require('D:/Works/sih26/node_modules/sharp');
 const fal = await import(pathToFileURL('D:/Works/ethicity-games-mid-publicness/publicness/tools/fal.mjs').href);
 
 const PRIV = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SHARED = path.resolve(PRIV, 'shared/ethicity-elementary-common-v1/backgrounds');
+const SHARED = path.resolve(PRIV, '../shared/ethicity-elementary-common-v1/backgrounds');
 const OUT = path.join(PRIV, 'assets-official');
 const ENDPOINT = 'fal-ai/nano-banana/edit';
 
