@@ -63,9 +63,11 @@
       [0, 15, 14, 3], [18, 15, 14, 3]                                             // 아래 덤불·교문 기둥(가운데 길만 열림)
     ], open: [[6, 4], [7, 4], [8, 4], [25, 4], [26, 4], [27, 4], [15, 1], [16, 1], [17, 1], [15, 2], [16, 2], [17, 2], [15, 3], [16, 3], [17, 3], [15, 4], [16, 4], [17, 4]] },
     { id: 'village', name: '마을 길', img: 'assets/scenes/village.png', road: true },
-    // 우리 집(2026-11-03 플레이테스트): 그림(내 방)은 bg 사각형 안에만. 방문 = 그림 아래 매트 밑 (10,12) 한 칸, 그 아래·오른쪽이 거실, 현관 = 오른쪽 아래 (24~27,17)
-    //   tools/room-compose.mjs: room-base.png + 판다 축소 + 공통 팩 코르크보드. 바깥 바닥·벽·식탁·소파는 그림이 없어 map.js drawOuter가 단색으로 그린다
-    { id: 'room', name: '내 방', img: 'assets/scenes/room.png', bg: ROOM_BG,
+    // 우리 집(2026-11-03 플레이테스트): 그림(내 방)은 bg 사각형 안에만. 방문 = 그림 아래 매트 밑 (9~10,12) 두 칸, 그 아래·오른쪽이 거실, 현관 = 오른쪽 아래 (24~27,17)
+    //   tools/room-compose.mjs: room-base.png + 판다 축소 + 공통 팩 코르크보드.
+    //   바깥(거실·식탁·복도·현관) = bgOuter house.png(2026-11-09, tools/house-art.mjs — 배치 밑그림을 fal nano-banana-pro로 칠함). 아래 거실 칸은 그 그림에 맞춘 것.
+    //   house.png를 못 불러오면 map.js drawOuter가 단색 + box 칸(식탁·소파)으로 대신 그린다.
+    { id: 'room', name: '내 방', img: 'assets/scenes/room.png', bg: ROOM_BG, bgOuter: 'assets/scenes/house.png',
       lamp: { x: ROOM_BG.x + 25.5 * 0.55, y: ROOM_BG.y + 5.8 * 0.55, r: 9 * 0.55 }, // lamp: 밤에 켜 둔 책상 불빛(map.js sceneLight, 장면 안 칸 좌표)
       rects: [
       rr([0, 0, 32, 7]), rr([0, 7, 3, 5]), rr([0, 12, 2, 3]), rr([0, 15, 1, 3]), // 그림 속 벽(왼쪽은 원근으로 기울어 칸마다 다름)
@@ -77,9 +79,15 @@
       [0, 0, 32, 2], [0, 0, 1, 18], [31, 0, 1, 18], // 집 바깥 벽
       [18, 2, 2, 11],                        // 내 방 ↔ 거실 벽
       [20, 2, 11, 3],                        // 거실 위쪽 벽
-      [0, 12, 10, 1], [11, 12, 9, 1],        // 내 방 아래 벽(방문 (10,12)만 열림)
-      [20, 8, 2, 4],                         // 소파
-      [24, 7, 5, 3],                         // 식탁
+      [0, 12, 9, 1], [11, 12, 9, 1],         // 내 방 아래 벽(방문 = (9~10,12) 두 칸, 2026-11-09 그림의 문 폭·매트에 맞춤)
+      [20, 5, 4, 2],                         // 소파(뒷벽에 붙어 정면)
+      [21, 7, 2, 2],                         // 러그 위 낮은 탁자
+      [25, 6, 5, 4],                         // 식탁 + 의자 4
+      [29, 5, 2, 2],                         // 냉장고
+      [20, 10, 1, 2], [30, 10, 1, 2],        // 화분 둘
+      [1, 13, 4, 1],                         // 복도 왼쪽 끝 화분·낮은 수납장
+      [20, 15, 2, 2],                        // 택배 상자
+      [29, 12, 2, 5],                        // 신발장
       [0, 17, 24, 1], [28, 17, 4, 1]         // 아래 벽(현관만 열림)
     ] }
   ];
@@ -207,9 +215,11 @@
     ob('closet', '옷장과 전신거울', 'room', 2, 9, 1, 2, '옷장과 전신거울. 거울 속의 나는 오늘도 교복 차림이다.', { wall: true }),
     ob('cushion', '바닥 쿠션', 'room', 11, 9, 1, 1, '러그 위 바닥 쿠션. 여기 앉아 휴대폰을 보다 보면 시간이 금방 간다.', { wall: true }),
     ob('moodlamp', '무드등', 'room', 16, 9, 1, 1, '작은 무드등. 밤에는 이 불빛만 켜 둘 때가 많다.', { wall: true }),
-    // 거실: 그림이 없어 map.js가 box 색으로 칸을 채워 그린다
-    ob('dtable', '식탁', 'room', 24, 7, 5, 3, '식탁. 엄마가 남겨 둔 반찬에 랩이 씌워져 있다.', { box: 'table' }),
-    ob('sofa', '소파', 'room', 20, 8, 2, 4, '소파. 리모컨이 쿠션 사이에 끼어 있다.', { box: 'sofa' })
+    // 거실·현관(2026-11-09 house.png). box = 그림을 못 불러올 때 map.js가 칠하는 색
+    ob('dtable', '식탁', 'room', 25, 6, 5, 4, '식탁. 엄마가 남겨 둔 반찬에 랩이 씌워져 있다.', { box: 'table' }),
+    ob('sofa', '소파', 'room', 20, 5, 4, 2, '소파. 리모컨은 앞 탁자 위에 놓여 있다.', { box: 'sofa' }),
+    ob('fridge', '냉장고', 'room', 29, 5, 2, 2, '냉장고. 자석 밑에 엄마 메모가 붙어 있다. “반찬 데워 먹어. 오늘도 좀 늦어.”'),
+    ob('parcel', '택배 상자', 'room', 20, 15, 2, 2, '현관 앞 택배 상자. 송장에 우리 집 주소와 엄마 이름, 전화번호가 그대로 적혀 있다.')
   ];
 
   /* 이웃집: 조사만(들어갈 수 없음). approach = 현관 앞 계단 칸 */
@@ -325,13 +335,12 @@
     c1_e2_b: { place: 'room', tint: 'night', card: '그날 밤 · 내 방', cast: [] },
     c1_e2_d: { place: 'road', tint: 'day', card: 'D-2 아침 · 등굣길', cast: [] },
     c1_e3_a: { place: 'room', tint: 'night', me: BED_ME, cast: [] }, // 2026-11-03 플레이테스트: 이 걷기도 침대 조사로 열린다
-    c1_e3_b: { place: 'gate', tint: 'day', card: 'D-1 아침 · 교문 앞', cast: [who('saebom', 'yard', 16, 14, 'left')] },
-    c1_e3_ask: { place: 'classroom', tint: 'day', card: 'D-1 · 교실', cast: only(classmates, ['saebom', 'jiho']),
-      bubbles: [{ on: '고마워. 내가 정한 만큼만', who: 'jiho', text: '🙂' }] },
-    c1_e3_anon: { place: 'classroom', tint: 'day', card: 'D-1 · 교실', cast: only(classmates, ['saebom', 'jiho', 'haneul']),
-      bubbles: [{ on: '역할 바꿨어', who: 'jiho', text: '😌' }] },
-    c1_e3_cap: { place: 'classroom', tint: 'day', card: 'D-1 점심 · 교실', cast: only(classmates, ['saebom', 'jiho', 'haneul']),
-      bubbles: [{ on: '…화나. 아무한테도', who: 'jiho', text: '💢' }] },
+    // 2026-11-09 지시서 C1: 개인톡을 보내는 사람은 그 무대에 세우지 않는다(바로 옆에 서서 개인톡을 보내는 것처럼 보였다). 대사는 그대로.
+    //   단톡방(group)은 같은 교실에서 함께 봐도 자연스러워 그대로 둔다. 검사 = tests/fix-1109.mjs C1(정적 검사)
+    c1_e3_b: { place: 'gate', tint: 'day', card: 'D-1 아침 · 교문 앞', cast: [] }, // 새봄 개인톡(옛: 새봄이 바로 옆)
+    c1_e3_ask: { place: 'classroom', tint: 'day', card: 'D-1 · 교실', cast: only(classmates, ['saebom']) }, // 지호 개인톡
+    c1_e3_anon: { place: 'classroom', tint: 'day', card: 'D-1 · 교실', cast: only(classmates, ['saebom', 'haneul']) }, // 지호 '(개인톡)' 줄
+    c1_e3_cap: { place: 'classroom', tint: 'day', card: 'D-1 점심 · 교실', cast: [] }, // 하늘 개인톡 + 반응에서 새봄·하늘·지호 모두 메시지
     c2_e4_a: { place: 'store', tint: 'evening', cast: [who('haneul', 'yard', 22, 14, 'left')],
       bubbles: [{ on: '누가 만든 거래', who: 'haneul', text: '이거 봐 ㅋㅋ' }, { on: '나 보낸 거 지울게', who: 'haneul', text: '…' }] },
     c2_e4_b: { place: 'road', tint: 'evening', card: '그날 저녁 · 집에 가는 길', cast: [] },
@@ -353,7 +362,7 @@
     c3_e8_e: { place: 'room', tint: 'night', card: '그날 밤 · 내 방', cast: [] },
     c3_e8_f: { place: 'classroom', tint: 'day', card: '축제 다음 날 · 아침', cast: classmates },
     c3_e8_g: { place: 'classroom', tint: 'day', cast: classmates },
-    c3_e8_i: { place: 'classroom', tint: 'day', cast: classmates },
+    c3_e8_i: { place: 'classroom', tint: 'day', cast: only(classmates, ['saebom', 'haneul', 'jiho']) }, // 민준 개인톡(C1)
     c3_e8_h: { place: 'classroom', tint: 'day', card: '상담실', cast: [] },
     c3_e9_a: { place: 'classroom', tint: 'day', cast: classmates,
       bubbles: [{ on: '다들 퍼 가 주세요', who: 'jiho', text: '…!' }, { on: '당하고만 있으면 안 돼', who: 'saebom', text: '😤' }] },
