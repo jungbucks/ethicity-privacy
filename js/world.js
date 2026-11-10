@@ -89,6 +89,19 @@
       [20, 15, 2, 2],                        // 택배 상자
       [29, 12, 2, 5],                        // 신발장
       [0, 17, 24, 1], [28, 17, 4, 1]         // 아래 벽(현관만 열림)
+    ] },
+    // 특별실(AI 실습실, 2026-11-10 특별 수업): 공통 팩 ai_lab.png 그대로. 평소엔 갈 수 없다 — 특별 수업 걷기(TRIGGERS.sc_1.warp)에서만 마당→교실 문이 이리로.
+    //   맨 끝에 붙여 기존 장면 좌표(ox)가 그대로 → 지도 판 VERSION 그대로. 나가는 문 = 아래 가운데 문간 → 마당 현관 앞
+    { id: 'ai_lab', name: 'AI 실습실', img: BG + 'ai_lab.png', rects: [
+      [0, 0, 32, 5],                          // 위 벽·책장·칠판·서버장
+      [14, 5, 4, 1], [24, 5, 5, 1], [21, 5, 3, 1], // 받침대 위 AI 앞쪽·서버장·서랍장 아랫단
+      [0, 0, 2, 11], [31, 0, 1, 18],          // 왼쪽 창 벽·오른쪽 벽
+      [2, 5, 4, 6],                           // 왼쪽 컴퓨터 책상·의자
+      [26, 6, 5, 6],                          // 오른쪽 컴퓨터 책상·의자
+      [0, 11, 3, 5], [29, 11, 2, 5],          // 왼쪽·오른쪽 아래 책장
+      [4, 12, 7, 4],                          // 왼쪽 아래 탁자·의자
+      [25, 14, 4, 2],                         // 오른쪽 아래 낮은 수납장
+      [0, 16, 14, 2], [19, 16, 13, 2], [12, 15, 2, 1], [19, 15, 2, 1] // 아래 벽·문 기둥(가운데 문간 14~18만 열림)
     ] }
   ];
   var W = SW * SCENES.length, H = SH;
@@ -146,7 +159,21 @@
   door([['yard', 14, 17], ['yard', 15, 17], ['yard', 16, 17], ['yard', 17, 17]], 'village', [1, 6], 'right', '교문 밖으로', '교문 밖으로 나왔다.');
   door([['village', 0, 5], ['village', 0, 6]], 'yard', [15, 16], 'up', '학교로', '학교에 도착했다.'); // 그림의 길이 왼쪽 끝에서 들어오는 자리(그 아래는 나무)
   door([['village', 24, 11], ['village', 25, 11]], 'room', [25, 16], 'up', '집 안으로', '우리 집에 들어왔다.'); // 2026-11-03 플레이테스트: 도착 칸 = 현관 안쪽(거실 쪽)
-  door([['room', 24, 17], ['room', 25, 17], ['room', 26, 17], ['room', 27, 17]], 'village', [24, 12], 'down', '밖으로', '밖으로 나왔다.'); // 2026-11-03 플레이테스트: 현관을 거실 쪽으로(옛 자리 14~17,17은 내 방 아래)
+  door([['room', 24, 17], ['room', 25, 17], ['room', 26, 17], ['room', 27, 17]], 'village', [24, 12], 'down', '밖으로', '밖으로 나왔다.');
+  door([['ai_lab', 14, 17], ['ai_lab', 15, 17], ['ai_lab', 16, 17], ['ai_lab', 17, 17], ['ai_lab', 18, 17]], 'yard', [7, 5], 'down', '마당으로', '마당으로 나왔다.'); // 특별실 → 마당(2026-11-10)
+  /* 걷기 구간 워프(2026-11-10 특별 수업, 사용자 결정): 그 걷기에서만 어떤 장면으로 가는 문을 다른 칸으로 보낸다.
+   *   trig.warp = { from: 도착 장면 id, to: [전역 x, y], say } — 예: 마당→교실 문이 특별실로. map.js가 걷기 시작마다 setWarp(trig.warp 또는 null)
+   *   doorTarget(door, trig) = 그 걷기에서 실제 도착(검사·길찾기용, 바꾸지 않음) · setWarp = DOORS 항목을 잠시 바꾸고 null이면 되돌린다 */
+  function doorTarget(d, trig) {
+    var w = trig && trig.warp;
+    return w && d.scene === w.from ? { to: w.to.slice(), dir: d.dir, label: d.label, scene: sceneAt(w.to[0]).id, say: w.say } : d;
+  }
+  var warped = [];
+  function setWarp(w) {
+    warped.forEach(function (o) { DOORS[o.k] = o.d; }); warped = [];
+    if (!w) return;
+    Object.keys(DOORS).forEach(function (k) { var d = DOORS[k]; if (d.scene === w.from) { warped.push({ k: k, d: d }); DOORS[k] = doorTarget(d, { warp: w }); } });
+  } // 2026-11-03 플레이테스트: 현관을 거실 쪽으로(옛 자리 14~17,17은 내 방 아래)
 
   /* 구역 이름(화면 위 표시용): 장면 이름, 마당만 조금 나눔 */
   function areaName(xx, yy) {
@@ -182,7 +209,8 @@
     ob('tdesk', '교탁', 'classroom', 14, 4, 4, 3, '교탁 위에 출석부와 분필이 놓여 있다.'),
     ob('tdesk2', '선생님 책상', 'classroom', 2, 5, 7, 3, '담임 선생님 책상. 축제 부스 배치도가 펼쳐져 있다. 우리 반은 마당 왼쪽 천막이다.'),
     ob('desk7', '민준이 책상', 'classroom', 28, 10, 3, 1, '민준이 책상. 만들다 만 소품이 가지런히 놓여 있다.'),
-    ob('desk8', '내 책상', 'classroom', 25, 13, 3, 1, '내 책상. 축제 소품 상자가 올려져 있다.'),
+    // 2026-11-10 사용자 피드백: 기본 자리(책상 윗줄 위)는 바로 앞에 앉은 지호 이름표 옆이라 지호 자리처럼 보였다 → 핀 = 내가 앉을 의자 위
+    ob('desk8', '내 책상', 'classroom', 25, 13, 3, 1, '내 책상. 축제 소품 상자가 올려져 있다.', { pin: P('classroom', 26.5, 14.35) }),
     ob('shelf', '전시 책장', 'library', 13, 4, 6, 1, '‘개인정보, 어디까지 괜찮을까?’라는 책이 앞에 놓여 있다.', { wall: true }),
     ob('libdesk', '대출 데스크', 'library', 2, 4, 8, 4, '사서 선생님 자리. 지금은 비어 있다.'),
     ob('pc3', '공용 PC 3번', 'library', 24, 3, 5, 4, '공용 PC 3번. 검색과 출력용이다.', { label: '3' }),
@@ -282,7 +310,7 @@
     c2_e6_a: { time: '축제 당일 · 아침', mission: '도서관 공용 PC 3번에서 안내문 출력하기', target: { obj: 'pc3' }, spawn: 'gate', tint: 'day',
       cast: [who('friend', 'library', 23, 8, 'right'), who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')] },
     c3_e7_a: { time: '축제 당일 · 오후', mission: '마당 부스 옆 하늘이네에게 가기', target: { npc: 'haneul' }, spawn: 'hall', tint: 'day',
-      cast: [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 17, 12, 'left'),
+      cast: [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 18, 12, 'left'),
         who('minjun', 'classroom', 29, 11, 'up'), who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')] },
     c3_e8_a: { time: '축제 당일 · 저녁', mission: '집에 가서 쉬기 — 내 방 컴퓨터', target: { obj: 'mypc' }, spawn: 'yard', tint: 'evening',
       cast: [who('haneul', 'yard', 16, 13, 'left'), who('teacher', 'yard', 16, 8, 'down')],
@@ -291,6 +319,12 @@
       greet: '자리에 앉자 휴대폰 알림이 연달아 울렸다.',
       skipIf: 'e8_confrontation=fight', // 싸움 경로는 이미 다음 날 교실·상담실 장면을 거쳤다 → 걷기 생략
       cast: schoolDay() },
+    // 특별 수업(2026-11-10): 마당 현관 앞에서 시작, 평소처럼 교실 문으로 들어가면 이 걷기에서만 특별실(AI 실습실)로
+    sc_1: { time: 'D-1 · 오후 5교시', mission: '정보 수업 — 교실로 들어가기', target: { npc: 'teacher' }, spawn: 'hall', tint: 'day',
+      warp: { from: 'classroom', to: [SCENES.length * 0, 0], say: '오늘 정보 수업은 특별실(AI 실습실)이다. 평소엔 잠겨 있던 곳이다.' },
+      cast: [who('teacher', 'ai_lab', 16, 7, 'down'), who('saebom', 'ai_lab', 12, 9, 'right'), who('haneul', 'ai_lab', 12, 12, 'right'),
+        who('jiho', 'ai_lab', 20, 9, 'left'), who('minjun', 'ai_lab', 20, 12, 'left')],
+      greet: [{ who: 'teacher', text: '왔구나. 오늘 정보 수업은 여기 AI 실습실에서 할 거야.' }] },
     ep_1: { time: '다음 주 월요일', mission: '교실에서 담임 선생님께 가기', target: { npc: 'teacher' }, spawn: 'gate', tint: 'day',
       cast: [who('teacher', 'classroom', 17, 7, 'down')].concat(schoolDay()) }
   };
@@ -311,15 +345,19 @@
     store: { name: '매점 앞', me: P('yard', 21, 14, 'right') }, // 매점 창구 바로 앞
     library: { name: '도서관', me: P('library', 26, 7, 'up') },
     hall: { name: '현관 앞', me: P('yard', 7, 7, 'right') }, // 복도는 없앴다(설계 결정) — 현관 앞에서
-    booth: { name: '마당 축제 부스', me: P('yard', 14, 13, 'right') }
+    booth: { name: '마당 축제 부스', me: P('yard', 14, 13, 'right') },
+    ailab: { name: 'AI 실습실', me: P('ai_lab', 16, 11, 'up') } // 특별 수업(2026-11-10)
   };
   function only(list, whos) { return list.filter(function (c) { return whos.indexOf(c.who) >= 0; }); }
   var ATDESK = rp(25, 10, 'up'); // 내 방 책상 컴퓨터 앞
   // 침대에 누운 자리(2026-11-03 플레이테스트): 머리가 베개에 오도록 발 기준 칸 좌표(소수) + pose 'lie'(map.js: 윗몸만 그리고 아래는 이불 속)
   var BED_ME = P('room', 3.7, 5.84, 'down', { pose: 'lie' });
-  var BOOTH = [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 17, 12, 'left'),
+  // 2026-11-10 사용자 버그: 옆 반 친구가 하늘 바로 오른쪽 위(17,12)에 붙어 서서 하늘 머리 위 느낌표가 옆으로 비키며 선이 생겼다 → 한 칸 오른쪽(18,12)
+  var BOOTH = [who('haneul', 'yard', 16, 13, 'left'), who('friend', 'yard', 18, 12, 'left'),
     who('saebom', 'yard', 7, 14, 'up'), who('jiho', 'yard', 4, 11, 'right')];
 
+  var SC_CAST = TRIGGERS.sc_1.cast; // 특별 수업 무대 = 걷기 때 자리 그대로
+  TRIGGERS.sc_1.warp.to = [S.ai_lab.ox + 16, 15]; // 특별실 문간 안쪽 도착 칸
   var STAGES = {
     // 첫 단톡방: 새봄·하늘·지호·민준이 모두 주인공 둘레에(확대 무대에서 한 화면에 보이게 — 2026-11-01 사용자)
     pro_1: { place: 'classroom', tint: 'day', card: '방과 후 · 오후 5:30 — 축제 준비 중', me: P('classroom', 15, 10, 'up'),
@@ -329,7 +367,8 @@
     c1_e1_a: { place: 'room', tint: 'night', me: BED_ME, cast: [] }, // 'D-4 · 저녁 8:12' — 8시 이후는 밤(timeTint와 같은 기준, 2026-11-02)
     c1_e1_b: { place: 'room', tint: 'night', me: BED_ME, cast: [] },
     // 2026-11-03 플레이테스트: 주인공이 하늘 바로 아래에 서서 하늘 이름표가 얼굴을 덮고 있었다 → 셋을 서로 2칸 이상 떨어뜨림(둘 다 민준이 책상 건너편, 2026-11-02 '민준이 앞에' 유지)
-    c1_e2_a: { place: 'classroom', tint: 'day', me: P('classroom', 29, 8, 'down'),
+    // keep(2026-11-10 플레이테스트): 엎드린 민준이가 선택 상자 밑에 가렸다 → 카메라가 주인공·민준·하늘 묶음을 보이는 영역 가운데에(map.js 장면 무대)
+    c1_e2_a: { place: 'classroom', tint: 'day', me: P('classroom', 29, 8, 'down'), keep: ['minjun', 'haneul'],
       cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 26, 8, 'right'),
         who('saebom', 'classroom', 12, 8, 'down'), who('jiho', 'classroom', 10, 9, 'down')] },
     c1_e2_b: { place: 'room', tint: 'night', card: '그날 밤 · 내 방', cast: [] },
@@ -366,10 +405,17 @@
     c3_e8_h: { place: 'classroom', tint: 'day', card: '상담실', cast: [] },
     c3_e9_a: { place: 'classroom', tint: 'day', cast: classmates,
       bubbles: [{ on: '다들 퍼 가 주세요', who: 'jiho', text: '…!' }, { on: '당하고만 있으면 안 돼', who: 'saebom', text: '😤' }] },
+    // 2026-11-10 플레이테스트: 캡처 전달을 알게 된 지호와 마주 서는 사과 장면(둘만, 두 칸 떨어져 마주 봄)
+    c3_e9_j: { place: 'classroom', tint: 'day', me: P('classroom', 24, 11, 'right'), cast: [who('jiho', 'classroom', 26, 11, 'left')] },
     c3_e9_b: { place: 'classroom', tint: 'day', card: '점심시간 · 교실', cast: only(classmates, ['saebom', 'jiho']),
       bubbles: [{ on: '그냥 넘어가면 억울한데', who: 'saebom', text: '😣' }] },
+    // 특별 수업(2026-11-10): AI 실습실, 선생님은 받침대 AI 앞, 친구 넷은 양쪽에 찬성(왼쪽 새봄·하늘)·반대(오른쪽 지호·민준)
+    sc_1: { place: 'ailab', tint: 'day', cast: SC_CAST }, sc_2: { place: 'ailab', tint: 'day', cast: SC_CAST },
+    sc_3: { place: 'ailab', tint: 'day', cast: SC_CAST }, sc_4: { place: 'ailab', tint: 'day', cast: SC_CAST },
+    sc_5: { place: 'ailab', tint: 'day', cast: SC_CAST },
     // 에필로그: 반 친구 넷이 담임 선생님 앞에 모두 모인다(확대 무대에서 한 화면에 — 2026-11-02 사용자, 첫 단톡방과 같은 방식)
-    ep_1: { place: 'classroom', tint: 'day', me: P('classroom', 16, 9, 'up'),
+    // board(2026-11-10 사용자 요청): 칠판 분필 글씨 — 그림은 그대로, map.js drawBoard가 교실 칠판 가운데(장면 칸 x·y, 글자 높이 size칸)에 그린다
+    ep_1: { place: 'classroom', tint: 'day', me: P('classroom', 16, 9, 'up'), board: { text: '프라이버시', x: 16, y: 2.15, size: 1.45 },
       cast: [who('teacher', 'classroom', 17, 7, 'down'), who('saebom', 'classroom', 14, 9, 'up'), who('haneul', 'classroom', 18, 9, 'up'),
         who('jiho', 'classroom', 14, 11, 'up'), who('minjun', 'classroom', 18, 11, 'up')] }
   };
@@ -380,7 +426,7 @@
       { if: 'e9b=calm|del', text: '그때 말려 줘서… 고마워.' },
       { if: 'e4b=blame', text: '…괜찮아. 신경 쓰지 마.' },
       { if: 'trust.saebom>=1', text: '요즘 네 덕분에 든든해.' },
-      { if: 'e4', text: '합성 사진… 아직도 돌고 있는 것 같아.' },
+      { if: 'e4', text: '그 가짜 영상… 아직도 돌고 있는 것 같아.' },
       { text: '역할표 아직 정리 중이야!' }
     ],
     haneul: [
@@ -489,7 +535,7 @@
     TILES: TILES, DOORS: DOORS, OBJECTS: OBJECTS, SPAWNS: SPAWNS, BED_ME: BED_ME, scaleRect: scaleRect,
     triggers: TRIGGERS, idle: IDLE, DIRS: DIRS, PLACES: PLACES, STAGES: STAGES,
     tile: tile, objectAt: objectAt, walkable: walkable, stepFrom: stepFrom,
-    findPath: findPath, adjacentTo: adjacentTo, areaName: areaName, nearestWalkable: nearestWalkable, NEIGHBORS: NEIGHBORS,
+    findPath: findPath, adjacentTo: adjacentTo, doorTarget: doorTarget, setWarp: setWarp, areaName: areaName, nearestWalkable: nearestWalkable, NEIGHBORS: NEIGHBORS,
     object: function (id) { return OBJECTS.filter(function (o) { return o.id === id; })[0]; }
   };
   root.PRIVACY_WORLD = WORLD;

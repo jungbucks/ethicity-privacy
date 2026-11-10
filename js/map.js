@@ -136,13 +136,14 @@
     return { x: ob.x, y: ob.y, w: ob.w, h: ob.h, obj: ob, name: ob.name };
   }
   function boxContains(b) { return function (x, y) { return x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h; }; }
-  function routeToTarget() { return WD.findPath({ x: me.x, y: me.y }, WD.adjacentTo({ contains: boxContains(targetBox()) }), blocked); }
+  function routeToTarget() { var b = targetBox(); return b.who ? talkPath({ x: me.x, y: me.y }, { x: b.x, y: b.y, w: 1, h: 1 }) : WD.findPath({ x: me.x, y: me.y }, WD.adjacentTo({ contains: boxContains(b) }), blocked); }
 
   /* ── 열기·닫기 ─────────────────── */
   function show(r) {
     run = r;
     targetId = r.mapTarget;
     trig = WD.triggers[targetId];
+    WD.setWarp(trig.warp || null); // 특별 수업 걷기만 마당→교실 문이 특별실로(2026-11-10), 다른 걷기는 되돌림
     cast = trig.cast.slice();
     passGreeted = {}; talked = {}; talkMarks = []; lastLabel = '';
     streak = { who: null, n: 0 }; guideUntil = 0;
@@ -183,6 +184,7 @@
   // 장면 무대: 입력 없이 장소·인물·시간대만 그린다. card가 있으면 잠깐 컷 카드를 띄우고 끝나면 resolve
   function stage(st, opts) {
     opts = opts || {};
+    WD.setWarp(null); // 장면 무대에선 워프 없음
     mode = 'stage'; stageInfo = st; trig = null; targetId = null; focus = opts.focus || null; gen++; camS = null;
     stageTint = st.tint || WD.timeTint(opts.time); // tint가 없는 무대는 장면 첫 시각 줄(아침·오후·저녁·밤)로
     cast = st.cast.slice(); blocked = {}; nudge = null; walkTint = null; arrived = null; stepHold = 0;
@@ -326,7 +328,22 @@
         if (x >= ob.x && x < ob.x + ob.w && y >= ob.y && y < ob.y + ob.h) list.push({ type: 'obj', ob: ob, dir: dir });
       });
     });
+    // 2026-11-10 사용자 결정(말 걸 때 밀치지 않기): 한 칸 띄운 자리(같은 줄 2칸, 사이 칸이 걸을 수 있고 비어 있음)의 사람에게도 말을 건다 — 바로 옆보다 뒤 순서
+    order.forEach(function (dir) {
+      var d = WD.DIRS[dir], x1 = me.x + d[0], y1 = me.y + d[1], x = me.x + 2 * d[0], y = me.y + 2 * d[1];
+      if (!midFree(x1, y1)) return;
+      cast.forEach(function (c) { if (c.x === x && c.y === y && !list.some(function (n) { return n.c === c; })) list.push({ type: 'npc', c: c, dir: dir, far: true }); });
+    });
     return list;
+  }
+  function midFree(x, y) { return WD.walkable(x, y, blocked) && !WD.DOORS[x + ',' + y] && !cast.some(function (c) { return c.x === x && c.y === y; }); }
+  // 사람에게 걸어갈 때 멈출 자리: 한 칸 띄운 자리(같은 줄 2칸, 사이 비움) 먼저, 그리로 못 가면 바로 옆. 이미 말 걸 수 있는 자리면 그대로(빈 길)
+  function talkPath(from, box) {
+    var touch = WD.adjacentTo({ contains: boxContains(box) });
+    if (box.w !== 1 || box.h !== 1) return WD.findPath(from, touch, blocked); // 사물은 바로 옆
+    var far = function (x, y) { var dx = box.x - x, dy = box.y - y; return ((Math.abs(dx) === 2 && dy === 0) || (dx === 0 && Math.abs(dy) === 2)) && midFree(x + dx / 2, y + dy / 2); };
+    if (touch(from.x, from.y) || far(from.x, from.y)) return [];
+    return WD.findPath(from, far, blocked) || WD.findPath(from, touch, blocked);
   }
   function isTarget(n) { return trig.target.npc ? n.type === 'npc' && n.c.who === trig.target.npc : n.type === 'obj' && n.ob.id === trig.target.obj; }
   function nearTarget() { return neighbors().some(isTarget); }
@@ -393,12 +410,14 @@
   //   엎드린 민준이는 의자에 앉아 있어 밀지 않는다
   //   2026-11-09 지시서 B1: '대화가 시작되면 최소 1칸 떨어져' — 옆으로 붙으면 0.5칸씩(가운데 사이 2칸), 위아래로 붙으면 옆으로 0.75칸씩(가로 1.5칸).
   //   비킬 쪽이 막힌 칸(벽·책상)이면 그 사람은 0.25칸만(그림이 가구 속으로 들어가 보이지 않게)
+  //   2026-11-10 사용자 결정: 미끄러지며 벌어지는 게 밀치는 것처럼 보였다 → 한 칸 띄운 자리에서 말 걸면 아무도 안 움직이고,
+  //   바로 옆일 때만 몸이 겹치지 않을 만큼(옆 0.25칸·위아래 0.3칸, 11-03 값) 미끄러짐 없이 바로
   function setNudge(c) {
-    if (!c || c.pose) return;
-    var dx = c.x - me.x, k = dx ? 0.5 : 0.75, side = dx ? (dx > 0 ? 1 : -1) : (WD.walkable(me.x - 1, me.y) ? 1 : -1);
-    var km = WD.walkable(me.x - side, me.y) ? k : 0.25, kc = WD.walkable(c.x + side, c.y) ? k : 0.25;
-    nudge = { c: c, mx: -side * km, cx: side * kc };
-    nudgeK = 0;
+    nudge = null;
+    if (!c || c.pose || Math.abs(c.x - me.x) + Math.abs(c.y - me.y) !== 1) return;
+    var dx = c.x - me.x, k = dx ? 0.25 : 0.3, side = dx ? (dx > 0 ? 1 : -1) : (WD.walkable(me.x - 1, me.y) ? 1 : -1);
+    nudge = { c: c, mx: -side * k, cx: side * k };
+    nudgeK = 1;
   }
   function nudgeX(c) { return nudge && nudge.c === c ? nudge.cx * nudgeK : 0; }
   function nudgeMe() { return nudge ? nudge.mx * nudgeK : 0; }
@@ -580,7 +599,7 @@
     var p;
     if (npc || ob) {
       var box = npc ? { x: npc.x, y: npc.y, w: 1, h: 1 } : ob;
-      p = WD.findPath(from, WD.adjacentTo({ contains: boxContains(box) }), blocked);
+      p = npc ? talkPath(from, box) : WD.findPath(from, WD.adjacentTo({ contains: boxContains(box) }), blocked);
       actOnArrive = true;
       tapWant = npc ? { npc: npc.who } : { obj: ob.id };
     } else {
@@ -907,6 +926,20 @@
     if (len <= v1 - v0) return a0 + len / 2 - (v0 + v1) / 2;
     return Math.max(a0 - v0, Math.min(a0 + len - v1, want));
   }
+  // 칠판 분필 글씨(2026-11-10 사용자 요청: 에필로그 칠판에 '프라이버시'): 무대 board가 있고 지금 장면이 교실일 때만. 그림은 그대로 두고 글씨만 얹는다
+  var lastBoard = null;
+  function drawBoard(sc, bx, by) {
+    var b = mode === 'stage' && stageInfo && stageInfo.board;
+    if (!b || sc.id !== 'classroom') { lastBoard = null; return; }
+    var x = bx + b.x * T, y = by + b.y * T, fs = Math.round(b.size * T);
+    ctx.save();
+    ctx.font = '700 ' + fs + 'px Galmuri11, NanumSquare, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fillText(b.text, x + 1, y + 1); // 분필 가루 번짐
+    ctx.fillStyle = 'rgba(246,247,238,0.9)'; ctx.fillText(b.text, x, y);
+    var w = ctx.measureText(b.text).width;
+    ctx.restore();
+    lastBoard = { text: b.text, x0: x - w / 2, x1: x + w / 2, y0: y - fs / 2, y1: y + fs / 2 };
+  }
   // 장면 그림 바깥(장면이 화면보다 작을 때 남는 곳): 검정 대신 같은 그림을 아주 작게 줄였다 키운 흐린 배경 + 살짝 어둡게
   var blurImg = {};
   function drawBackdrop(sc, img) {
@@ -966,8 +999,21 @@
       // 카메라는 지금 장면 하나(ox~ox+SW, 0~SH) 안에서만 움직인다 — 장면 밖(검은 빈 곳)을 비추지 않게.
       // 보이는 영역이 장면보다 크면 장면을 그 영역 가운데에 두고, 남는 곳은 흐린 배경(drawBackdrop)이 채운다.
       var fr = freeRect();
-      cx = fitAxis(px - (fr.x0 + fr.x1) / 2, sx0, sw, fr.x0, fr.x1, viewW, !!sc.bg);
-      cy = fitAxis(py - (fr.y0 + (fr.y1 - fr.y0) * 0.62), 0, sh, fr.y0, fr.y1, viewH); // 몸이 칸 위로 2칸쯤 서므로 조금 아래에
+      // 2026-11-10 플레이테스트: 무대에 keep(함께 보여야 할 인물)이 있으면 주인공 혼자가 아니라 그 묶음(몸 전체)의 가운데를 보이는 영역 가운데에 둔다 —
+      //   "찍을까?"(c1_e2_a)에서 주인공보다 세 칸 아래 엎드린 민준이가 오른쪽 아래 선택 상자 밑에 들어가 있었다
+      var keep = stageInfo && stageInfo.keep ? cast.filter(function (c) { return stageInfo.keep.indexOf(c.who) >= 0; }) : [];
+      var wantX = px - (fr.x0 + fr.x1) / 2, wantY = py - (fr.y0 + (fr.y1 - fr.y0) * 0.62); // 몸이 칸 위로 2칸쯤 서므로 조금 아래에
+      if (keep.length) {
+        var TAG_ROOM = 0.7; // 발밑 이름표 자리(칸) — 몸만 보이고 이름표가 상자 밑에 들어가지 않게
+        var kx0 = me.fx, kx1 = me.fx + 1, ky0 = me.fy + 1 - BODY, ky1 = me.fy + 1;
+        keep.forEach(function (c) { kx0 = Math.min(kx0, c.x); kx1 = Math.max(kx1, c.x + 1); ky0 = Math.min(ky0, c.y + 1 - BODY); ky1 = Math.max(ky1, c.y + 1 + TAG_ROOM); });
+        wantX = (kx0 + kx1) / 2 * T - (fr.x0 + fr.x1) / 2; wantY = (ky0 + ky1) / 2 * T - (fr.y0 + fr.y1) / 2;
+      }
+      cx = fitAxis(wantX, sx0, sw, fr.x0, fr.x1, viewW, !!sc.bg);
+      cy = fitAxis(wantY, 0, sh, fr.y0, fr.y1, viewH);
+      // keep 묶음의 아래쪽이 그래도 보이는 영역 밖이면(장면을 캔버스 전체에 채우느라 못 올림) 그 축만 '보이는 영역만 장면 안'으로
+      if (keep.length && ((ky1 * T - cy > fr.y1) || (ky0 * T - cy < fr.y0))) cy = fitAxis(wantY, 0, sh, fr.y0, fr.y1, Infinity);
+      if (keep.length && ((kx1 * T - cx > fr.x1) || (kx0 * T - cx < fr.x0))) cx = fitAxis(wantX, sx0, sw, fr.x0, fr.x1, Infinity, !!sc.bg);
       // 2026-11-09 C3 후속: 장면으로 캔버스를 다 덮으면(위 fitAxis) 작은 창·높은 선택 상자에서 주인공이 폰·선택 상자 뒤로 들어갔다(run-probes stage-phone, 800×600).
       //   그 축만 예전처럼 '보이는 영역만 장면 안'으로 — 가장자리에 좁은 흐린 띠가 생겨도 주인공이 보이는 쪽을 택한다(빈 칸 없음은 보통 화면 1148×977·1280×800·390×844에서 검사)
       if (py - cy > fr.y1 || py - cy - T * 2 < fr.y0) cy = fitAxis(py - (fr.y0 + (fr.y1 - fr.y0) * 0.62), 0, sh, fr.y0, fr.y1, Infinity);
@@ -1008,6 +1054,7 @@
       ctx.fillStyle = 'rgba(60,70,60,0.35)';
       for (var gy = 0; gy < WD.SH; gy++) for (var gx = 0; gx < WD.SW; gx++) if (WD.grid[gy][sc.ox + gx] === '#') ctx.fillRect(bx + gx * T, by + gy * T, T + 1, T + 1);
     }
+    drawBoard(sc, bx, by);
     if (DEBUG.grid) debugGrid(sc, bx, by);
     // 공용 PC 3번: 그림의 컴퓨터 화면 옆 작은 번호표(목적지이거나 켜진 장면일 때 화면도 밝게)
     var pc = WD.object('pc3');
@@ -1241,11 +1288,13 @@
   }
   // 2026-11-03 플레이테스트: ?가 다른 인물의 몸·이름표에 걸리면 그 사람 것처럼 보인다(민준이의 ?가 하늘이 이름표 옆) →
   //   걸린 것 반대쪽(대상 머리 위쪽)으로 x만 비킨다. 비켰으면 tail = true → drawTail이 대상 머리까지 꼬리를 잇는다
-  function clearMark(c, mx, my, w, h) {
+  // skipMe(2026-11-10 사용자 버그): 목적지 핀은 내 몸·내 이름표를 피해 옆으로 비키지 않는다 — 하늘 앞에 서면 핀이 옆으로 비키며 머리까지 선이 생겼다.
+  //   내 캐릭터와 겹치는 핀은 drawMarker의 다음 규칙이 내 머리 위로 올린다(선 없음)
+  function clearMark(c, mx, my, w, h, skipMe) {
     var pad = markPad(), self = c.who;
     function blockers(x) {
-      var a = lastBodies.filter(function (b) { return b.who !== self; })
-        .concat(lastTags.filter(function (r) { return r.who !== self; }).map(function (r) { return { x0: r.x, x1: r.x + r.w, y0: r.y, y1: r.y + r.h }; }));
+      var a = lastBodies.filter(function (b) { return b.who !== self && !(skipMe && b.who === 'me'); })
+        .concat(lastTags.filter(function (r) { return r.who !== self && !(skipMe && r.me); }).map(function (r) { return { x0: r.x, x1: r.x + r.w, y0: r.y, y1: r.y + r.h }; }));
       return a.filter(function (b) { return x + w / 2 + 2 > b.x0 && x - w / 2 - 2 < b.x1 && my + h / 2 + pad > b.y0 && my - h / 2 - pad < b.y1; });
     }
     var hit = blockers(mx);
@@ -1406,7 +1455,7 @@
     if (tc && bubbles.some(function (q) { return q.who === tc && q.until > performance.now(); })) { lastMarker = { x: null, y: null, tx: b.x, ty: b.y, kind: kind, hidden: true }; return; }
     var bob = markBob(t, 0), anchor = b.obj && b.obj.pin; // pin: 사물의 표시 기준점(침대 = 매트리스 가운데)
     var mx = anchor ? anchor.x * T - cam.x : (b.x + b.w / 2) * T - cam.x, my = tc ? headY(tc) : anchor ? anchor.y * T - cam.y : b.y * T - cam.y - T * 0.55;
-    var clr = tc ? clearMark(tc, tc.x * T - cam.x + T / 2, my, markSize('talk').w, markSize('talk').h) : null;
+    var clr = tc ? clearMark(tc, tc.x * T - cam.x + T / 2, my, markSize('talk').w, markSize('talk').h, true) : null;
     if (clr) mx = clr.x;
     // 화면 밖이거나 위 안내 상자·아래 버튼에 가리는 자리면, 보이는 띠 안으로 옮기고 방향 화살표를 단다
     var iconSize = 16 * markScale(), sa = safeArea(), ms = markSize(kind);
@@ -1584,6 +1633,7 @@
       tags: function () { return lastTags.slice(); },
       // 2026-11-03 플레이테스트 검사용: 인물 몸(캔버스 좌표)·말풍선 자리·방금 지나온 출입구·문 지난 뒤 멈춤·밀어 그리기
       bodies: function () { return lastBodies.slice(); },
+      board: function () { return lastBoard; }, // 칠판 글씨(캔버스 CSS 좌표) 또는 null
       bubbleRects: function () { return lastBubbles.slice(); },
       arrived: function () { return arrived ? { scene: arrived.scene, steps: arrived.steps } : null; },
       holding: holding,

@@ -112,7 +112,9 @@
     checkOthersKept();
     $('#btn-end-path').click(); await wait();
     ok(view() === 'v-path', '선택 경로 화면');
-    ok($$('.path-opts li.mine').length === routeLen, '경로의 내 선택 수 = ' + routeLen + ' (표시 ' + $$('.path-opts li.mine').length + ')');
+    // 특별 수업(sc_*, 2026-11-10) 선택은 선택 경로 화면에 넣지 않는다(설계: 엔딩 회상·경로 보기 밖) — 그만큼 빼고 센다
+    var pathLen = routeLen - PrivacyApp.state().history.filter(function (h) { return /^sc_/.test(h.scene); }).length;
+    ok($$('.path-opts li.mine').length === pathLen, '경로의 내 선택 수 = ' + pathLen + ' (표시 ' + $$('.path-opts li.mine').length + ')');
     ok($$('.path-opts li.other').length > 0, '고르지 않은 선택지도 표시');
     ok($$('.ending-chips li').length === 4, '엔딩 목록 4종');
     $('#btn-path-reflect').click(); await wait();
@@ -125,6 +127,8 @@
 
   // ── 사건 8 확장 「렌즈 안에 갇힌 밤」 CG 프로브 ──
   // R.A 경로에서 사건 8만 바꿔 현장 → 싸움 → 지원 요청으로 간다(사건 8 첫 선택 = 13번째, 0부터 12)
+  // 대표 경로 A에 끼운 특별 수업 단계 수(2026-11-10) — 아래 고정 위치(upto·from)는 모두 그 뒤라 이만큼 민다
+  function scn() { return window.PRIVACY_ROUTES.A.filter(function (x) { return /^sc_/.test(x); }).length; } // routes.js는 나중에 불러오므로 쓸 때 센다
   function nfRoute(R, list) { return R.A.reduce(function (a, x) { return a.concat(x === 'c3_e8_a#tell' ? list : [x]); }, []); }
   var NF_FIGHT = ['c3_e8_a#meet', 'c3_e8_b#go', 'c3_e8_c#fight', 'c3_e8_f#support'];
   function cgNow() {
@@ -156,9 +160,9 @@
       ok(/가상/.test(note) && /1388/.test(note) && /117/.test(note) && /118/.test(note), '주의 화면 안내·도움 연락처: ' + note.slice(0, 40));
       var log = nfWatch();
       $('#btn-new').click();
-      await play(route, { upto: 13 });
+      await play(route, { upto: 13 + scn() });
       PrivacyApp.setSpeed('normal');
-      await play(route, { from: 13, upto: 16 });
+      await play(route, { from: 13 + scn(), upto: 16 + scn() });
       var st = PrivacyApp.state();
       ok(st.scene === 'c3_e9_a', '수습 뒤 사건 9로 복귀: ' + st.scene);
       ok(seqHas(log, ['arrival', 'confrontation', 'clash', 'recorded', 'classroom-reaction', 'teacher-support']), 'CG 순서 도착→대치→충돌→촬영→교실→담임: ' + log.filter(function (e) { return 'cg' in e && e.cg; }).map(function (e) { return e.cg; }).join('>'));
@@ -185,7 +189,7 @@
       ok(!!cutCounsel && !cutCounsel.cgOn, '컷 카드 뒤로 앞 장면 CG가 비치지 않음');
       ok(st.flags.e8_confrontation === 'fight' && st.flags.e8_video_spread === true && st.flags.e8_response === 'support', '플래그 기록');
       PrivacyApp.setSpeed('instant');
-      await play(route, { from: 16 });
+      await play(route, { from: 16 + scn() });
       ok(view() === 'v-ending', '엔딩까지 완주');
       ok(PrivacyApp.state().ending === 'D', '정문에서 싸운 경로는 수습해도 D(B 아님): ' + PrivacyApp.state().ending);
       ok(/도움을 청했다/.test(document.body.textContent) && !/도움을 요청하는 건 지는 게 아니다/.test(document.body.textContent), 'D 본문은 도움을 청한 경우 문장');
@@ -196,7 +200,7 @@
       if (P.phase === 0) {
         $('#btn-new').click();
         PrivacyApp.setSpeed('instant');
-        await play(route, { upto: 14 });
+        await play(route, { upto: 14 + scn() });
         PrivacyApp.setSpeed('normal');
         $$('#g-dock .choice').filter(function (b) { return b.getAttribute('data-choice') === 'fight'; })[0].click();
         await wait(50);
@@ -226,7 +230,7 @@
     }
     else if (s === 'nf-undo') {
       $('#btn-new').click();
-      await play(route, { upto: 14 });
+      await play(route, { upto: 14 + scn() });
       var before = PrivacyApp.state();
       $$('#g-dock .choice').filter(function (b) { return b.getAttribute('data-choice') === 'fight'; })[0].click();
       await wait(50); await passTalk();
@@ -241,11 +245,11 @@
     }
     else if (s === 'nf-noimg') { // 그림을 못 불러오는 환경 — 대사만으로 끝까지
       $('#btn-new').click();
-      await play(route, { upto: 15 });
+      await play(route, { upto: 15 + scn() });
       ok(PrivacyApp.state().scene === 'c3_e8_f' && $$('#g-dock .choice').length === 3, '그림 없이도 교실 반응 선택지');
       await wait(200);
       ok($('#cg').hidden, '그림을 못 불러오면 빈 CG 레이어를 남기지 않음');
-      await play(route, { from: 15 });
+      await play(route, { from: 15 + scn() });
       ok(view() === 'v-ending', '그림 없이 엔딩까지');
     }
   }
@@ -433,7 +437,7 @@
       ok(PrivacyApp.state().scene === 'c1_e2_b' && PrivacyMap.debug.stage().place === 'room' && PrivacyMap.debug.stage().tint === 'night', '그날 밤 내 방');
       $('#btn-undo').click(); await wait(); confirmYes(); await wait(50); await passTalk(); await wait(50);
       ok(PrivacyApp.state().scene === 'c1_e2_a' && PrivacyMap.debug.stage().place === 'classroom', '되돌리면 무대도 교실로');
-      await play(R.A, { from: 3, upto: 8 });
+      await play(R.A, { from: 3, upto: 8 + scn() });
       ok(PrivacyApp.state().scene === 'c2_e5_a' && $('#g-phone').getAttribute('data-device') === 'monitor', 'AI 도우미는 모니터');
       ok(PrivacyMap.debug.stage().place === 'room', '모니터 장면 무대: 내 방');
     }
@@ -454,7 +458,7 @@
 
     else if (s === 'yard') { // 장면 그림 맵: 장면 5개(교실·도서관·마당·마을 길·내 방)를 출입구로 오간다
       var WY = window.PRIVACY_WORLD;
-      ok(WY.SCENES.length === 5 && WY.W === 160 && WY.H === 18, '장면 5개·격자 160×18: ' + WY.W + '×' + WY.H);
+      ok(WY.SCENES.length === 6 && WY.W === 192 && WY.H === 18, '장면 6개(특별실 ai_lab, 2026-11-10)·격자 192×18: ' + WY.W + '×' + WY.H);
       $('#btn-new').click();
       await play(R.A, { upto: 1, stopAtMap: true }); // 하교 걷기(교실에서 출발)
       var S = {}; WY.SCENES.forEach(function (c) { S[c.id] = c; });
@@ -1102,7 +1106,7 @@
       await play(R.C);
       ok(view() === 'v-ending' && $('#e-eyebrow').textContent === '엔딩 C', '저장소 없이도 엔딩까지 진행');
       $('#btn-end-path').click(); await wait();
-      ok($$('.path-opts li.mine').length === R.C.length, '메모리 기록으로 경로 화면');
+      ok($$('.path-opts li.mine').length === R.C.filter(function (x) { return !/^sc_/.test(x); }).length, '메모리 기록으로 경로 화면(특별 수업 선택 제외)');
     }
 
     else if (s === 'corrupt-progress' || s === 'stale-progress') {
@@ -1191,7 +1195,7 @@
     else if (s === 'route-bad') {
       // 지시서 [나쁜 경로]: 내가 해친 민준이는 9시 전에 말리지 않는다(아무도 없으면 '알림'), 엔딩 D 본문에 양면·책임 행동
       var BAD = ['pro_1#sns', 'c1_e1_a#public', 'c1_e1_b#pass', 'c1_e2_a#shoot', 'c1_e2_b#story', 'c1_e2_d#no', 'c1_e3_b#capture', 'c1_e3_cap#none',
-        'c2_e4_a#forward', 'c2_e4_b#blame', 'c2_e5_a#all', 'c2_e5_b#close', 'c2_e6_a#post', 'c2_e6_b#deny',
+        'sc_1#on', 'sc_2#all', 'sc_3#open', 'sc_4#open', 'c2_e4_a#forward', 'c2_e4_b#blame', 'c2_e5_a#all', 'c2_e5_b#close', 'c2_e6_a#post', 'c2_e6_b#deny',
         'c3_e7_a#join', 'c3_e7_b#hide', 'c3_e8_a#meet', 'c3_e8_b#go', 'c3_e8_c#fight', 'c3_e8_f#silence', 'c3_e8_i#fine', 'c3_e9_a#share', 'c3_e9_b#keep'];
       var heads = {};
       new MutationObserver(function () { var st = PrivacyApp.state(); var h = $('#g-head .head-title'); if (st && h) heads[st.scene] = h.textContent; }).observe($('#g-head'), { childList: true, subtree: true });
@@ -1419,7 +1423,7 @@
         $('#btn-new').click(); await wait(300);
         var MW = window.PRIVACY_WORLD, MD = PrivacyMap.debug, sox = function (id) { return MW.SCENES.filter(function (c) { return c.id === id; })[0].ox; };
         if (s === 'shot-marks-sleep') await play(R.A, { upto: 3, stopAtMap: true }); // 사건 2: 엎드려 자는 민준
-        if (s === 'shot-marks-library') await play(R.A, { upto: 10, stopAtMap: true }); // 사건 6: 도서관 공용 PC
+        if (s === 'shot-marks-library') await play(R.A, { upto: 10 + scn(), stopAtMap: true }); // 사건 6: 도서관 공용 PC
         var spot = { 'shot-marks-yard': ['yard', 14, 9, 'left'], 'shot-marks-class': ['classroom', 15, 13, 'up'], 'shot-marks-sleep': ['classroom', 22, 14, 'right'], 'shot-marks-library': ['library', 16, 11, 'up'], 'shot-marks-room': ['room', 8, 9, 'down'] }[s];
         if (spot) MD.place(sox(spot[0]) + spot[1], spot[2], spot[3]);
         await wait(600); return;

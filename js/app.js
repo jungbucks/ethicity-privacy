@@ -143,7 +143,7 @@
   }
 
   /* ── 화면 전환 ───────────────────── */
-  var VIEWS = ['v-start', 'v-game', 'v-map', 'v-chapter', 'v-ending', 'v-path', 'v-reflect'];
+  var VIEWS = ['v-start', 'v-game', 'v-map', 'v-chapter', 'v-ending', 'v-path', 'v-reflect', 'v-card'];
   var current = 'v-start';
   var STAGE_VIEWS = ['v-map', 'v-game', 'v-chapter']; // 맵 무대 위에 겹쳐 뜨는 화면
   function show(id, focusEl) {
@@ -151,6 +151,7 @@
     if (STAGE_VIEWS.indexOf(id) < 0) { window.PrivacyMap.hide(); stagedScene = null; stageToken++; }
     if (id !== 'v-map') window.PrivacyTalk.close();
     if (id !== 'v-game') cgShow(null);
+    if (id !== 'v-card') cardAfterPrint(); // 인쇄 제목이 남아 있으면 되돌린다(afterprint가 오지 않는 브라우저)
     if (id !== 'v-ending' && $('finale')) { clearTimeout(finaleTimer); finaleState = null; $('finale').hidden = true; }
     $('stage').hidden = STAGE_VIEWS.indexOf(id) < 0;
     VIEWS.forEach(function (v) { $(v).hidden = v !== id; });
@@ -240,6 +241,7 @@
     var hasFinished = !!(run && run.screen === 'ending');
     $('start-links').hidden = !(hasFinished || result);
     $('btn-start-path').hidden = !hasFinished;
+    $('btn-start-card').hidden = !hasFinished; // 성찰 카드는 엔딩을 본 진행이 있을 때만
     show('v-start', null);
   }
 
@@ -247,6 +249,7 @@
   function chapterLabel(n) {
     if (n === 0) return '프롤로그';
     if (n === 4) return '에필로그';
+    if (n === 'sc') return '특별 수업 · 정보 시간'; // 1장과 2장 사이(2026-11-10)
     return n + '장 · ' + story.chapters[n].title;
   }
 
@@ -550,15 +553,110 @@
   var CG_LOOK = { arrival: 1, confrontation: 1, clash: 1, recorded: 1 }; // 주인공 남/여 그림이 따로 있는 키
   var CG_ALT = { arrival: '밤의 학교 정문 앞에 도착한 나', confrontation: '@nightfox와 마주 선 나', clash: '서로 옷을 붙잡고 밀치는 두 사람',
     recorded: '휴대폰을 들어 두 사람을 찍는 구경꾼들', 'classroom-reaction': '영상을 본 반 친구들', 'teacher-support': '이야기를 들어 주는 담임 선생님' };
-  function cgFile(key) { return CG_DIR + (CG_LOOK[key] ? (playerLook() === 'f' ? 'girl-' : 'boy-') : '') + key + '.png'; }
+  /* 교실 AI CCTV 감지 화면(특별 수업, story.cctv): 그림 위 빨간 사각형·꼬리표·알림 카드·카메라 이름 줄은 여기서 그린다(그림에는 글자·상자가 없다).
+   *   네 장면 모두 같은 빨간색·같은 모양. 표시는 그림이 뜬 뒤 짧게 늦게 잡힌다(CSS .det-on, 움직임 줄이기면 바로). 글자는 꾸밈(aria-hidden) — 같은 내용이 그림 alt·#cg-live에 있다 */
+  var CCTV_DIR = 'assets/cctv/';
+  function cctvShot(key) { var c = story.cctv; return c && c.shots && Object.prototype.hasOwnProperty.call(c.shots, key) ? c.shots[key] : null; }
+  function cgFile(key) {
+    if (cctvShot(key)) return CCTV_DIR + key + '.png';
+    return CG_DIR + (CG_LOOK[key] ? (playerLook() === 'f' ? 'girl-' : 'boy-') : '') + key + '.png';
+  }
+  function pct(v) { return (Math.round(v * 100000) / 1000) + '%'; }
+  function cctvPaint(box, shot) {
+    var det = box.querySelector('.cg-det'), c = story.cctv, b = shot.box, r = det.querySelector('.cg-box');
+    det.querySelector('.cg-cam-name').textContent = c.cam;
+    det.querySelector('.cg-cam-demo').textContent = c.demo;
+    r.style.left = pct(b.x); r.style.top = pct(b.y); r.style.width = pct(b.w); r.style.height = pct(b.h);
+    det.querySelector('.cg-tag').textContent = shot.label + ' ' + shot.pct + '%';
+    det.querySelector('.cg-alert-what').textContent = c.room + ' · ' + shot.label;
+    det.querySelector('.cg-alert-send').textContent = c.send;
+    det.hidden = false;
+  }
+  // 표시 켜기: 그림이 다 내려온 뒤(잔상·빈 화면 위에 상자만 뜨지 않게). 한 박자 뒤에 클래스를 붙여 CSS 지연이 돌게 한다
+  function cctvReveal() {
+    var box = $('cg');
+    if (box.getAttribute('data-mode') !== 'cctv' || box.querySelector('.cg-img').hasAttribute('data-loading')) return;
+    void box.offsetWidth;
+    box.classList.add('det-on');
+  }
+  /* 휴대폰 화면 그림(사건 4 가짜 춤 영상, story.clips): 세로 휴대폰 틀 안에 사진 한 장 또는 여러 장을 0.4초마다 넘겨 영상처럼.
+   *   움직임 줄이기면 멈춘 한 장 + '다음 장면' 버튼(직접 넘김). 그림을 하나라도 못 불러오면 틀을 숨기고 글만으로 진행.
+   *   계정 줄·재생 표시는 꾸밈(aria-hidden) — 화면 읽기에는 화면 칸의 aria-label(alt)과 #cg-live.
+   *   ★ 선택지가 뜨기 전에 이야기 줄(cg:null)이 내린다. 혹시 빠져도 renderDock가 한 번 더 내린다(고르는 동안 영상이 돌지 않게) */
+  var CLIP_MS = 400;
+  var clipTimer = null, clipIdx = 0;
+  function clipOf(key) { var c = story.clips; return c && Object.prototype.hasOwnProperty.call(c, key) ? c[key] : null; }
+  function clipStop() { if (clipTimer) clearInterval(clipTimer); clipTimer = null; }
+  function clipFrame(i, say) {
+    var box = $('cg'), ph = box.querySelector('.cg-phone'), frames = ph.querySelectorAll('.cg-frame'), n = frames.length;
+    if (!n) return;
+    clipIdx = ((i % n) + n) % n;
+    Array.prototype.forEach.call(frames, function (f, k) { f.classList.toggle('on', k === clipIdx); });
+    ph.querySelector('.cg-prog i').style.width = ((clipIdx + 1) / n * 100) + '%';
+    ph.querySelector('.cg-count').textContent = n > 1 ? (clipIdx + 1) + ' / ' + n : '';
+    if (say) $('cg-live').textContent = '장면 ' + (clipIdx + 1) + ' / ' + n;
+  }
+  function clipFail() { // png까지 실패: 틀을 숨기고 무대·글로
+    var box = $('cg');
+    clipStop();
+    box.hidden = true; document.body.classList.remove('cg-on');
+    box.querySelector('.cg-phone').setAttribute('data-failed', '');
+  }
+  function clipShow(box, key, clip) {
+    var ph = box.querySelector('.cg-phone'), scr = ph.querySelector('.cg-screen'), step = ph.querySelector('.cg-step'), many = clip.frames.length > 1;
+    clipStop();
+    ph.removeAttribute('data-failed');
+    scr.textContent = '';
+    scr.setAttribute('aria-label', clip.alt || '');
+    clip.frames.forEach(function (file) {
+      var im = document.createElement('img');
+      im.className = 'cg-frame'; im.alt = ''; im.decoding = 'async'; im.draggable = false;
+      // img-src.js의 webp→png 재시도보다 먼저 등록: png까지 실패했을 때만 틀을 숨긴다(지금 떠 있는 그림일 때만)
+      im.onerror = function () { if (/\.png($|\?)/.test(im.src) && im.parentNode === scr && box.getAttribute('data-cg') === key) clipFail(); };
+      window.PrivacyImg.load(im, file);
+      scr.appendChild(im);
+    });
+    ph.querySelector('.cg-phone-who').textContent = clip.who || '';
+    ph.querySelector('.cg-phone-av').textContent = clip.av || '?';
+    ph.classList.toggle('video', !!clip.video);
+    ph.querySelector('.cg-phone-bar').hidden = !clip.video;
+    step.hidden = !(many && settings.reduceMotion); // 움직임 줄이기: 저절로 넘어가지 않고, 버튼으로 한 장씩
+    ph.hidden = false;
+    clipFrame(0);
+    if (many && !settings.reduceMotion) clipTimer = setInterval(function () { clipFrame(clipIdx + 1); }, CLIP_MS);
+  }
+  // 휴대폰 틀은 대화창 위에 다 보이게: 대화창이 평소보다 높으면('한 번에'로 여러 줄을 쌓았을 때) 그만큼 틀을 줄인다
+  function cgFit() {
+    var box = $('cg'), talk = $('talk');
+    box.style.paddingBottom = '';
+    if (box.hidden || box.getAttribute('data-mode') !== 'phone' || !talk || talk.hidden) return;
+    var need = $('stage').getBoundingClientRect().bottom - talk.getBoundingClientRect().top + 8;
+    if (need > parseFloat(getComputedStyle(box).paddingBottom)) box.style.paddingBottom = Math.round(need) + 'px';
+  }
   function cgShow(key) {
     var box = $('cg'), im = box.querySelector('.cg-img');
-    box.classList.remove('shake', 'dim');
+    box.style.paddingBottom = '';
+    box.classList.remove('shake', 'dim', 'det-on');
     box.querySelector('.cg-rec').hidden = true;
-    if (!key) { box.hidden = true; box.removeAttribute('data-cg'); document.body.classList.remove('cg-on'); return; }
-    var file = cgFile(key);
+    box.querySelector('.cg-det').hidden = true;
+    box.querySelector('.cg-phone').hidden = true;
+    clipStop();
+    $('cg-live').textContent = '';
+    if (!key) { box.hidden = true; box.removeAttribute('data-cg'); box.removeAttribute('data-mode'); document.body.classList.remove('cg-on'); return; }
+    var clip = clipOf(key);
+    if (clip) {
+      box.setAttribute('data-cg', key);
+      box.setAttribute('data-mode', 'phone');
+      box.hidden = false;
+      document.body.classList.add('cg-on');
+      clipShow(box, key, clip);
+      if (!box.hidden) $('cg-live').textContent = clip.alt || '';
+      return;
+    }
+    var file = cgFile(key), shot = cctvShot(key);
     box.setAttribute('data-cg', key);
-    im.alt = CG_ALT[key] || '';
+    box.setAttribute('data-mode', shot ? 'cctv' : 'event');
+    im.alt = shot ? shot.alt : CG_ALT[key] || '';
     if (im.getAttribute('data-file') !== file) {
       im.setAttribute('data-file', file);
       im.removeAttribute('data-failed');
@@ -567,10 +665,17 @@
     }
     box.hidden = im.hasAttribute('data-failed'); // 그림을 못 불러오면 빈 레이어 대신 무대가 보이게
     document.body.classList.toggle('cg-on', !box.hidden); // CG 장면: 대화창 글자를 키운다
+    if (shot) {
+      cctvPaint(box, shot);
+      if (!box.hidden) $('cg-live').textContent = shot.alt; // 화면 읽기: 그림이 바뀔 때 무엇이 보이고 무엇으로 알렸는지 한 번
+      cctvReveal();
+    }
   }
+  // 줄에 cg 칸이 있으면 그림을 바꾼다. cg:null(또는 false·'') = 그림 내리기
+  function hasCg(line) { return !!line && Object.prototype.hasOwnProperty.call(line, 'cg'); }
   function cgLine(line, quiet) {
     if (!line) return;
-    if (line.cg) cgShow(line.cg);
+    if (hasCg(line)) cgShow(line.cg || null);
     var box = $('cg');
     if (box.hidden && !box.hasAttribute('data-cg')) return;
     if (line.rec) box.querySelector('.cg-rec').hidden = false;
@@ -584,8 +689,11 @@
   function cgSetup() {
     var box = $('cg'), im = box.querySelector('.cg-img');
     // img-src.js의 webp→png 재시도보다 먼저 등록: png까지 실패했을 때만 숨긴다
-    im.onerror = function () { if (/\.png($|\?)/.test(im.src)) { im.removeAttribute('data-loading'); im.setAttribute('data-failed', ''); box.hidden = true; document.body.classList.remove('cg-on'); } };
-    im.onload = function () { im.removeAttribute('data-loading'); };
+    im.onerror = function () { if (box.getAttribute('data-mode') === 'phone') return; if (/\.png($|\?)/.test(im.src)) { im.removeAttribute('data-loading'); im.setAttribute('data-failed', ''); box.hidden = true; document.body.classList.remove('cg-on'); } };
+    im.onload = function () { im.removeAttribute('data-loading'); cctvReveal(); };
+    // 휴대폰 틀 '다음 장면'(움직임 줄이기에서만 보임): 한 장씩 직접 넘긴다. 대화창 넘기기와 섞이지 않게 여기서 멈춘다
+    box.querySelector('.cg-step').addEventListener('click', function (e) { e.stopPropagation(); clipFrame(clipIdx + 1, true); });
+    window.addEventListener('resize', cgFit);
     box.addEventListener('animationend', function () { box.classList.remove('shake'); });
   }
   // 그 자리 대화(장소 장면)는 포켓몬식 대화창으로 한 줄씩
@@ -597,7 +705,16 @@
       var ch = story.characters[who] || { name: who };
       return { who: who, name: who === 'me' ? player.nickname + ' (나)' : ch.name, text: fill(l.text), line: l };
     });
-    return window.PrivacyTalk.open(items, { instant: settings.speed === 'instant', onLine: function (it) { cgLine(it.line); stageBubble(Object.assign({ talk: true }, it.line)); } });
+    var instant = settings.speed === 'instant';
+    var opts = { instant: instant, onLine: function (it) { cgLine(it.line); cgFit(); stageBubble(Object.assign({ talk: true }, it.line)); } };
+    if (!instant) return window.PrivacyTalk.open(items, opts);
+    // '한 번에' 속도: 모든 줄을 한 상자에 쌓으면 그림이 마지막 것만 남는다 → 그림이 바뀌는 줄(cg 칸)마다 상자를 끊어 그림을 한 장씩 본다(2026-11-10)
+    var groups = [], cur = [];
+    items.forEach(function (it) { if (hasCg(it.line) && cur.length) { groups.push(cur); cur = []; } cur.push(it); });
+    if (cur.length) groups.push(cur);
+    var tk = stageToken; // 장면이 바뀌면(이전 선택·메뉴) 남은 묶음은 열지 않는다
+    return groups.slice(1).reduce(function (p, g) { return p.then(function () { return tk === stageToken ? window.PrivacyTalk.open(g, opts) : null; }); },
+      window.PrivacyTalk.open(groups[0] || [], opts));
   }
   function reactionLines(run, scene) {
     var c = (scene.choices || []).filter(function (x) { return x.id === run.reaction; })[0];
@@ -685,6 +802,7 @@
     var dock = $('g-dock');
     dock.textContent = ''; clearNext();
     if (E.needsChoice(story, run)) {
+      if ($('cg').getAttribute('data-mode') === 'phone') cgShow(null); // 휴대폰 틀 영상은 고르는 동안 돌지 않는다(이야기 줄 cg:null이 먼저 내리지만, 빠졌을 때의 안전망)
       var choices = E.visibleChoices(story, scene, run);
       if (scene.prompt) dock.appendChild(el('p', 'prompt', fill(scene.prompt)));
       var list = el('div', 'choices');
@@ -823,12 +941,14 @@
     var run = progress.run;
     var n = run.nextChapter, ch = story.chapters[n];
     var prev = run.chapter;
-    $('c-eyebrow').textContent = n === 4 ? '마지막' : (n + '장');
+    $('c-eyebrow').textContent = n === 4 ? '마지막' : n === 'sc' ? '특별 수업' : (n + '장');
     $('c-title').textContent = n === 4 ? '에필로그' : ch.title;
     $('c-sub').textContent = ch.sub;
     var sum = $('c-summary');
     sum.textContent = '';
-    if (prev >= 1 && story.chapters[prev]) {
+    var plan = prev === 'sc' ? classPlanBlock(run) : null;
+    if (plan) sum.appendChild(plan); // 특별 수업 뒤 2장 카드: 수치 변화 대신 '우리 반이 정한 AI CCTV 안'
+    else if (prev >= 1 && story.chapters[prev]) {
       sum.appendChild(el('h2', null, chapterLabel(prev) + ' — 지금까지 생긴 변화'));
       story.chapters[prev].events.forEach(function (e) { sum.appendChild(eventBlock(e, run)); });
       var mark = run.chapterMarks[prev] || { stats: {}, trust: {} };
@@ -844,11 +964,26 @@
     } else {
       sum.appendChild(el('p', 'lead-sub', '학급 축제 ‘레트로 사진관’을 준비하는 나흘. 단톡방, SNS, AI 도우미, 공용 컴퓨터에서 여러 번 선택하게 돼요. 지나간 선택은 뒤에서 다시 돌아와요.'));
     }
-    $('btn-chapter-go').textContent = n === 4 ? '에필로그 보기' : n + '장 시작';
+    $('btn-chapter-go').textContent = n === 4 ? '에필로그 보기' : n === 'sc' ? '특별 수업 시작' : n + '장 시작';
     show('v-chapter');
     // 장 카드 뒤로 직전 장면의 무대를 어둡게 깐다
     $('stage').classList.add('dim');
     if (stagedScene !== run.scene) { stagedScene = run.scene; window.PrivacyMap.stage(WD.STAGES[run.scene] || { place: 'classroom', tint: 'day', cast: [] }); }
+  }
+
+  /* 특별 수업 「우리 교실에 AI CCTV를 단다면」(2026-11-10): 우리 반이 정한 안(설치 여부·알림 범위·보관 기간·열람·삭제) + 선생님이 짚은 질문(앞 2줄). 정답 표시 없음.
+   *   특별 수업 플래그가 없으면(옛 진행) null. 지금 보기에 없는 옛 값은 그 줄만 '—' */
+  function classPlanBlock(run) {
+    var rows = E.specialClassRows(story, run);
+    if (!rows.length) return null;
+    var box = el('section', 'class-plan');
+    box.appendChild(el('h3', null, '우리 반이 정한 AI CCTV 안'));
+    var dl = el('dl', 'class-rows');
+    rows.forEach(function (r) { var row = el('div', 'class-row'); row.appendChild(el('dt', null, r.label)); row.appendChild(el('dd', null, r.text)); dl.appendChild(row); });
+    box.appendChild(dl);
+    var qs = E.specialClassNotes(story, run).slice(0, 2);
+    if (qs.length) { box.appendChild(el('p', 'class-q-label', '선생님이 짚은 질문')); qs.forEach(function (t) { box.appendChild(el('p', 'class-q', t)); }); }
+    return box;
   }
 
   /* ── 엔딩 ─────────────────────────── */
@@ -861,7 +996,7 @@
   function sceneDate(id) {
     var sc = story.scenes[id], sys = (sc.lines || []).map(function (l) { return E.normLine(l, story); }).filter(function (l) { return l.who === 'sys'; })[0];
     if (sys) return sys.text.split(' · ')[0];
-    // (2026-11-02: 'D-d' 오타로 'D-1 오후 6:05' 같은 제목에서 날짜를 못 읽어 '합성된 셀카' 날짜 칸이 비었음 → D-\d+)
+    // (2026-11-02: 'D-d' 오타로 'D-1 오후 6:05' 같은 제목에서 날짜를 못 읽어 사건 4(매점 앞) 날짜 칸이 비었음 → D-\d+)
     var m = /^(D-\d+|축제 당일|축제 다음 날)/.exec((sc.view && typeof sc.view.title === 'string' ? sc.view.title : '').replace(/^.* · /, ''));
     return m ? m[1] : '';
   }
@@ -987,6 +1122,7 @@
       story.chapters[n].events.forEach(function (e) { sec.appendChild(eventBlock(e, run)); });
       evs.appendChild(sec);
     });
+    var cls = $('e-class'), plan = classPlanBlock(run); cls.textContent = ''; cls.hidden = !plan; if (plan) cls.appendChild(plan);
     var st = $('e-stats'); st.textContent = '';
     var grid = el('div', 'change-grid');
     var a = el('div');
@@ -1078,6 +1214,115 @@
     show('v-reflect');
   }
 
+  /* ── 성찰 카드(2026-11-10) ───────────────
+   * 엔딩 뒤에 여는 한 장: 게임에서 한 선택(자동) + 큰 토픽 세 개에 쓰는 칸 + 이름·학번 → 브라우저 인쇄 창으로 PDF 저장.
+   *   로직 = js/card.js(PrivacyCard), 문구 = story.card. 쓴 글·이름·학번은 이 기기에만(ethicity.privacy.card.v1), 입력할 때마다 저장.
+   *   지우는 때: 「이 게임 기록 지우기」, 새 진행 시작(startNew). 쓴 글이 있으면 새로 시작하기 전에 먼저 묻는다(guardCard).
+   *   인쇄하는 동안만 문서 제목 = 공유한순간_성찰카드_학번_이름(저장되는 PDF 이름) → 끝나면 되돌린다. */
+  var Card = window.PrivacyCard, CARD = story.card;
+  var card = null, cardBack = 'v-ending';
+  var baseTitle = document.title, printTitled = false;
+  var CARD_NUM = ['①', '②', '③', '④', '⑤'];
+  function cardRaw() { return S.readJSON(S.KEYS.card).value; }
+  function cardSave() { if (card) { S.writeJSON(S.KEYS.card, card); checkWriteFailure(); } }
+  function cardWipe() { S.remove(S.KEYS.card); card = null; }
+  // 새 진행을 시작하기 전: 카드에 쓴 글이 있으면 먼저 묻고, 없으면 바로 next(이름·학번만 있으면 묻지 않는다 — startNew가 함께 지운다)
+  function guardCard(next) {
+    if (!Card.hasText(cardRaw())) { next(); return; }
+    ask(CARD.wipeTitle, CARD.wipeAsk, '지우고 새로 시작', next);
+  }
+  function todayText() { var d = new Date(); return d.getFullYear() + '년 ' + (d.getMonth() + 1) + '월 ' + d.getDate() + '일'; }
+  function cardNeed() {
+    var t = card && card.sid && card.name ? '' : CARD.needNote, n = $('k-need');
+    if (n.textContent !== t) n.textContent = t;
+    n.hidden = !t;
+  }
+  function renderCard(back) {
+    var run = progress.run;
+    if (!Card.finished(run)) { renderStart(); return; } // 엔딩을 본 진행이 있을 때만
+    cardBack = back || cardBack;
+    var r = Card.read(cardRaw(), run);
+    card = r.card;
+    if (r.stale) cardSave(); // 다른 진행에서 쓴 글은 섞지 않는다(빈 카드로 덮어씀)
+    var end = endingOf(run.ending);
+    $('k-eyebrow').textContent = CARD.title;
+    $('k-intro').textContent = CARD.intro;
+    $('k-game').textContent = story.title + ' · ' + CARD.title;
+    $('k-title').textContent = CARD.heading;
+    $('k-sid').value = card.sid;
+    $('k-name').value = card.name;
+    $('k-date').textContent = todayText();
+    $('k-ending').textContent = end ? '엔딩 ' + end.code + ' · ' + end.title : '';
+    $('k-device').textContent = CARD.deviceNote;
+    $('k-pdf').textContent = CARD.pdfNote;
+    var box = $('k-topics');
+    box.textContent = '';
+    Card.topics(story, E, run).forEach(function (t, i) {
+      var sec = el('section', 'rcard-topic'), id = 'k-a' + (i + 1);
+      sec.setAttribute('data-topic', t.id);
+      var h = el('h2');
+      h.appendChild(el('span', 'rcard-num', CARD_NUM[i] || String(i + 1)));
+      h.appendChild(document.createTextNode(' ' + t.title));
+      sec.appendChild(h);
+      // 게임이 채우는 칸: 내가 한 선택(평가 없이 사실만)
+      var auto = el('div', 'rcard-auto');
+      auto.appendChild(el('p', 'rcard-auto-label', t.label));
+      if (t.items.length) {
+        var ul = el('ul');
+        t.items.forEach(function (it) {
+          var li = el('li');
+          if (it.head) li.appendChild(el('span', 'rcard-ev', it.head));
+          li.appendChild(el('span', 'rcard-out', fill(it.text)));
+          ul.appendChild(li);
+        });
+        auto.appendChild(ul);
+      } else auto.appendChild(el('p', 'rcard-empty', t.empty));
+      sec.appendChild(auto);
+      // 학생이 쓰는 칸: 화면에서는 textarea, 인쇄에서는 같은 글을 문단으로(비우면 '작성 안 함')
+      var lab = el('label', 'rcard-q', t.q);
+      lab.setAttribute('for', id);
+      sec.appendChild(lab);
+      var ta = document.createElement('textarea');
+      ta.id = id; ta.className = 'rcard-input'; ta.rows = 3; ta.maxLength = Card.MAX_TEXT;
+      ta.value = card.answers[i] || '';
+      ta.setAttribute('aria-describedby', id + '-count');
+      sec.appendChild(ta);
+      var cnt = el('p', 'rcard-count');
+      cnt.id = id + '-count';
+      sec.appendChild(cnt);
+      var out = el('p', 'rcard-answer print-only');
+      out.setAttribute('aria-hidden', 'true');
+      sec.appendChild(out);
+      function sync() {
+        var v = Card.printText(ta.value);
+        cnt.textContent = ta.value.length + ' / ' + Card.MAX_TEXT + '자';
+        out.textContent = v || CARD.none;
+        out.classList.toggle('none', !v);
+      }
+      ta.addEventListener('input', function () { if (!card) return; card.answers[i] = Card.cleanText(ta.value); sync(); cardSave(); });
+      sync();
+      box.appendChild(sec);
+    });
+    cardNeed();
+    show('v-card');
+  }
+  function cardField(inputId, key, max) {
+    $(inputId).addEventListener('input', function () {
+      if (!card) return;
+      card[key] = Card.cleanLine($(inputId).value, max);
+      cardNeed(); cardSave();
+    });
+  }
+  function cardFileTitle() { return Card.fileName(CARD.fileBase, card ? card.sid : '', card ? card.name : ''); }
+  // 인쇄 창이 뜨는 동안만 문서 제목을 파일 이름으로(Ctrl+P로 직접 인쇄해도 같다)
+  function cardBeforePrint() { if (current === 'v-card' && card) { document.title = cardFileTitle(); printTitled = true; } }
+  function cardAfterPrint() { if (printTitled) { document.title = baseTitle; printTitled = false; } }
+  function cardPrint() {
+    cardBeforePrint();
+    try { window.print(); }
+    catch (e) { cardAfterPrint(); showNotice('이 브라우저에서는 인쇄 창을 열 수 없어요. 컴퓨터의 크롬·엣지에서 다시 열어 주세요.'); }
+  }
+
   /* ── 메뉴·확인 창 ─────────────────── */
   var lastFocus = null;
   function openOverlay(id) {
@@ -1125,6 +1370,7 @@
   }
   function startNew() {
     stopReveal();
+    cardWipe(); // 성찰 카드에 쓴 글·이름·학번(쓴 글이 있으면 guardCard가 먼저 물었다)
     progress.pos = null;
     setRun(E.createState(story));
     routeRun(true);
@@ -1138,8 +1384,8 @@
     $('btn-new').addEventListener('click', function () {
       if (needLook()) return;
       if (progress.run && progress.run.screen !== 'ending') {
-        ask('처음부터 시작할까요?', '지금까지의 진행은 지워져요. 완료한 결과와 지난 선택 기록은 남아요.', '처음부터', function () { showWarning(startNew); });
-      } else showWarning(startNew);
+        ask('처음부터 시작할까요?', '지금까지의 진행은 지워져요. 완료한 결과와 지난 선택 기록은 남아요.', '처음부터', function () { guardCard(function () { showWarning(startNew); }); });
+      } else guardCard(function () { showWarning(startNew); });
     });
     $('btn-continue').addEventListener('click', function () { if (needLook()) return; routeRun(false); });
     $('name-input').addEventListener('input', function () {
@@ -1152,7 +1398,15 @@
     $('btn-chapter-go').addEventListener('click', function () { setRun(E.advance(story, progress.run)); routeRun(true); });
     $('btn-end-path').addEventListener('click', function () { renderPath('v-ending'); });
     $('btn-end-reflect').addEventListener('click', function () { renderReflect('v-ending'); });
-    $('btn-end-replay').addEventListener('click', startNew);
+    $('btn-end-replay').addEventListener('click', function () { guardCard(startNew); });
+    $('btn-end-card').addEventListener('click', function () { renderCard('v-ending'); });
+    $('btn-start-card').addEventListener('click', function () { renderCard('v-start'); });
+    $('btn-card-back').addEventListener('click', function () { goTo(cardBack); });
+    $('btn-card-print').addEventListener('click', cardPrint);
+    cardField('k-sid', 'sid', Card.MAX_SID);
+    cardField('k-name', 'name', Card.MAX_NAME);
+    window.addEventListener('beforeprint', cardBeforePrint);
+    window.addEventListener('afterprint', cardAfterPrint);
     $('btn-path-reflect').addEventListener('click', function () { renderReflect('v-path'); });
     $('btn-path-back').addEventListener('click', function () { goTo(pathBack); });
     $('btn-reflect-back').addEventListener('click', function () { goTo(reflectBack); });
@@ -1163,7 +1417,8 @@
       if (!run || !run.history.length) return;
       var last = run.history[run.history.length - 1];
       var c = (story.scenes[last.scene].choices || []).filter(function (x) { return x.id === last.choice; })[0];
-      ask('이전 선택으로 돌아갈까요?', '“' + fill(c.text) + '”를 고르기 직전으로 돌아가요. 그 뒤의 진행은 지워져요.', '돌아가기', function () {
+      // c가 없을 수 있다: 보기 id가 바뀐 옛 저장(특별 수업 알림 범위, 2026-11-10) — 문구만 일반적으로
+      ask('이전 선택으로 돌아갈까요?', (c ? '“' + fill(c.text) + '”를' : '마지막 선택을') + ' 고르기 직전으로 돌아가요. 그 뒤의 진행은 지워져요.', '돌아가기', function () {
         stopReveal();
         sfx('retry');
         setRun(E.undo(progress.run));
@@ -1184,11 +1439,12 @@
     $('btn-menu-help').addEventListener('click', function () { settings.helpFold = false; settings.helpPlaces = []; applyHelp(); saveSettings(); closeOverlay('menu'); }); // 다시 두 장소 동안 보임
     $('btn-menu-restart').addEventListener('click', function () {
       $('menu').hidden = true;
-      ask('처음부터 다시 할까요?', '지금까지의 진행은 지워져요. 완료한 결과와 지난 선택 기록은 남아요.', '처음부터', startNew);
+      ask('처음부터 다시 할까요?', '지금까지의 진행은 지워져요. 완료한 결과와 지난 선택 기록은 남아요.', '처음부터', function () { guardCard(startNew); });
     });
     $('btn-menu-wipe').addEventListener('click', function () {
       $('menu').hidden = true;
-      ask('이 게임 기록을 모두 지울까요?', '‘공유한 순간’의 진행, 지난 선택 기록, 완료 결과가 지워져요. 공통 캐릭터와 다른 게임 기록은 지우지 않아요.', '지우기', function () {
+      ask('이 게임 기록을 모두 지울까요?', '‘공유한 순간’의 진행, 지난 선택 기록, 완료 결과, 성찰 카드에 쓴 글과 이름·학번이 지워져요. 공통 캐릭터와 다른 게임 기록은 지우지 않아요.', '지우기', function () {
+        cardWipe();
         S.remove(S.KEYS.progress);
         S.remove(S.KEYS.result);
         progress = { v: 1, run: null, explored: {}, endingsSeen: [], pos: null };

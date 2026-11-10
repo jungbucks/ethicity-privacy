@@ -526,6 +526,15 @@ h2 .event-topic { display: block; margin-top: 2px; }
 .spr.fallback { border-radius: 50%; color: #fff; font-weight: 800; font-size: 1.2rem; }
 .trust-val { font-weight: 600; }
 .chapter-group { margin-bottom: 24px; }
+/* 특별 수업 '우리 반이 정한 AI CCTV 안'(2026-11-10): 결과 화면 다른 상자와 같은 얇은 전체 테두리, 정답 색·왼쪽 띠 없음 */
+.class-plan { margin-top: 16px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-out); background: var(--card); }
+.class-plan h3 { margin: 0 0 8px; }
+.class-rows { margin: 0; display: grid; gap: 4px; }
+.class-row { display: grid; grid-template-columns: 6.5em 1fr; gap: 8px; }
+.class-row dt { color: var(--text-mute); }
+.class-row dd { margin: 0; font-weight: 600; }
+.class-q-label { margin: 12px 0 2px; font-size: .9rem; color: var(--text-mute); }
+.class-q { margin: 0; }
 .group-label { font-size: .9rem; font-weight: 700; color: var(--text-mute); margin-bottom: 8px; }
 .prose p { font-size: 1.05rem; }
 .callout { background: var(--surface); border-left: 4px solid var(--accent); border-radius: 0 var(--radius-in) var(--radius-in) 0; padding: 12px 16px; margin-top: 24px; }
@@ -640,6 +649,50 @@ h2 .event-topic { display: block; margin-top: 2px; }
 .cg.shake .cg-img { animation: cg-shake .36s ease-out 1; }
 @keyframes cg-shake { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-7px, 2px); } 45% { transform: translate(6px, -2px); } 70% { transform: translate(-3px, 1px); } }
 @media (max-width: 720px) { .cg { padding-bottom: clamp(132px, 30%, 176px); } .cg-rec { inset: 6% 4%; padding: 6px 10px; font-size: .7rem; } }
+/* ── 교실 AI CCTV 감지 표시(특별 수업, 2026-11-10): 그림 위에 게임이 그린다 — 위쪽 카메라 이름 줄 · 빨간 사각형 + 꼬리표 · 오른쪽 아래 알림 카드.
+   네 장면 모두 같은 빨간색·같은 모양(위험 정도로 색을 나누지 않는다). 뜻은 색이 아니라 꼬리표·카드 글자로 전한다. 글자 크기는 그림 너비에 맞춘다(cqw).
+   사각형·꼬리표는 그림이 뜬 뒤 0.45초, 알림 카드는 0.9초 뒤에 잡힌다(.det-on). 움직임 줄이기면 바로(.reduce-motion * { transition: none }) ── */
+.cg-pic { container-type: inline-size; }
+.cg-det { position: absolute; inset: 0; pointer-events: none; color: #fff; font-size: clamp(10px, 1.55cqw, 17px); line-height: 1.35; }
+.cg-det[hidden] { display: none; }
+.cg-cam { position: absolute; top: 0; left: 0; right: 0; margin: 0; padding: .45em 1em; display: flex; justify-content: center; gap: 1.2em;
+  background: rgba(11, 15, 20, .7); font-family: var(--pixel); letter-spacing: .04em; white-space: nowrap; }
+.cg-cam-name::before { content: "●"; color: #ff3b30; margin-right: .5em; }
+.cg-cam-demo { opacity: .8; }
+.cg-box { position: absolute; box-sizing: border-box; border: 3px solid #ff3b30; border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(11, 15, 20, .6), inset 0 0 0 1px rgba(11, 15, 20, .45); opacity: 0; }
+.cg-tag { position: absolute; left: -3px; bottom: 100%; margin-bottom: 1px; padding: .1em .5em; background: #C8261B; color: #fff; font-weight: 700; white-space: nowrap; border-radius: 2px 2px 0 0; }
+.cg-alert { position: absolute; right: 1.6%; bottom: 3%; margin: 0; max-width: 46%; box-sizing: border-box; padding: .5em .8em; display: grid; gap: .1em;
+  background: rgba(11, 15, 20, .9); border: 2px solid #ff3b30; border-radius: 8px; opacity: 0; }
+.cg-alert-head { font-family: var(--pixel); font-size: .85em; color: #FFB4AE; letter-spacing: .08em; }
+.cg-alert-what { font-weight: 700; }
+.cg-alert-send::before { content: "→ "; }
+/* 나타날 때만 천천히(.det-on에만 transition) — 다음 그림으로 넘어갈 때는 앞 표시가 바로 꺼져, 새 자리에 잔상이 남지 않는다 */
+.cg.det-on .cg-box { opacity: 1; transition: opacity .18s ease .45s; }
+.cg.det-on .cg-alert { opacity: 1; transition: opacity .22s ease .9s; }
+/* ── 휴대폰 화면(사건 4 가짜 춤 영상, 2026-11-10): 그림 칸이 세로 휴대폰 틀(3:4 화면 + 짙은 테두리)이 된다. 위 버튼(HUD) 아래에서 시작해 대화창 위에 선다.
+   장면 그림은 겹쳐 두고 .on인 한 장만 보인다(0.4초마다 app.js가 넘김 — 움직임 줄이기면 멈춘 한 장 + '다음 장면' 버튼). 계정 줄·재생 표시는 게임이 그린다 ── */
+.cg[data-mode="phone"] { align-items: start; padding-top: 58px; }
+.cg[data-mode="phone"] .cg-pic { box-sizing: content-box; aspect-ratio: 3 / 4; width: min(100cqw - 48px, (100cqh - 24px) * .75);
+  border: 8px solid #1F2433; border-radius: 30px; /* 안쪽 22 + 테두리 8 */ background: #05070A; overflow: hidden; box-shadow: 0 0 0 2px #3B4356; }
+.cg[data-mode="phone"] .cg-img { display: none; }
+.cg-phone { position: absolute; inset: 0; color: #fff; font-size: clamp(11px, 3.6cqw, 15px); line-height: 1.4; }
+.cg-phone[hidden] { display: none; }
+.cg-screen { position: absolute; inset: 0; }
+.cg-frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; visibility: hidden; -webkit-user-drag: none; }
+.cg-frame.on { visibility: visible; }
+.cg-phone-top { position: absolute; top: 0; left: 0; right: 0; margin: 0; padding: .7em .9em 1.6em; display: flex; align-items: center; gap: .6em;
+  background: linear-gradient(rgba(5, 7, 10, .72), rgba(5, 7, 10, 0)); font-weight: 700; text-shadow: 0 1px 2px rgba(0, 0, 0, .6); }
+.cg-phone-av { flex: none; width: 2em; height: 2em; border-radius: 50%; display: grid; place-items: center; background: #4A5468; border: 1px solid rgba(255, 255, 255, .7); font-size: .9em; }
+.cg-phone-bar { position: absolute; left: 0; right: 0; bottom: 0; margin: 0; padding: 1.8em .9em .7em; display: flex; align-items: center; gap: .7em;
+  background: linear-gradient(rgba(5, 7, 10, 0), rgba(5, 7, 10, .72)); font-family: var(--pixel); font-size: .9em; }
+.cg-phone-bar[hidden] { display: none; }
+.cg-prog { flex: 1 1 auto; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, .35); overflow: hidden; }
+.cg-prog i { display: block; height: 100%; width: 0; background: #fff; }
+.cg-step { position: absolute; left: 50%; bottom: 3.2em; transform: translateX(-50%); min-height: 44px; padding: 8px 18px; border: 2px solid #fff; border-radius: 999px;
+  background: rgba(22, 32, 31, .82); color: #fff; font: inherit; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.cg-step[hidden] { display: none; }
+.cg-step:focus-visible { outline: 3px solid #FFD54A; outline-offset: 2px; }
 .name-field { display: grid; gap: 4px; max-width: 16rem; margin: 4px 0 16px; }
 .name-field[hidden] { display: none; }
 .name-label { font-size: .85rem; font-weight: 700; }
@@ -662,6 +715,8 @@ h2 .event-topic { display: block; margin-top: 2px; }
 .cg-on .talk-name { font-size: .95rem; }
 .cg-on #v-game .choice-text { font-size: 1.08rem; }
 @media (max-width: 720px) { .cg-on .talk-text { font-size: 1.15rem; line-height: 1.7; } .cg-on #v-game .choice-text { font-size: 1rem; } }
+/* '한 번에' 속도로 여러 줄을 한 상자에 쌓을 때(talk.js .stack)는 글자를 키우지 않는다 — 상자가 커져 그림 아래쪽을 덮지 않게(2026-11-10) */
+.cg-on .talk.stack .talk-text { font-size: 1rem; line-height: 1.6; }
 /* 시작 직후 주의 화면(암전) */
 .warning { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px 16px; background: #060708; color: #E9ECEB; }
 .warning[hidden] { display: none; }
@@ -672,6 +727,73 @@ h2 .event-topic { display: block; margin-top: 2px; }
 .warning-help strong { color: #fff; }
 .warning-ok { justify-self: center; margin-top: 12px; min-width: 10rem; }
 @keyframes warning-in { from { opacity: 0; } to { opacity: 1; } }
+
+/* ── 성찰 카드(2026-11-10): 엔딩 뒤에 쓰고 PDF로 저장하는 한 장. 얇은 전체 테두리(왼쪽 색 띠 없음), 자동으로 채운 칸은 옅은 바탕 ── */
+.rcard { margin-top: 16px; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-out); }
+.rcard-game { margin: 0; font-size: .85rem; font-weight: 700; color: var(--accent); }
+.rcard h1 { margin: 2px 0 12px; font-size: 1.5rem; }
+.rcard-meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+.rcard-field, .rcard-fact { display: flex; align-items: center; gap: 10px; margin: 0; min-height: 44px; }
+.rcard-field > span, .rcard-fact > span { flex: none; width: 4.6em; font-size: .85rem; font-weight: 700; color: var(--text-mute); }
+.rcard-field input { flex: 1 1 auto; min-width: 0; min-height: 40px; box-sizing: border-box; font: inherit; padding: 6px 10px; border: 1px solid #7C8B89; border-radius: 8px; background: #fff; color: var(--text); }
+.rcard-fact b { font-weight: 700; }
+.rcard-meta .rcard-fact:last-child { grid-column: 1 / -1; } /* 엔딩 이름은 길어서 한 줄을 다 쓴다 */
+.rcard-topic { padding: 18px 0 6px; }
+.rcard-topic + .rcard-topic { border-top: 1px solid var(--border); margin-top: 12px; }
+.rcard-topic h2 { margin: 0 0 8px; font-size: 1.12rem; }
+.rcard-num { color: var(--accent); }
+.rcard-auto { padding: 10px 14px; background: var(--surface); border-radius: var(--radius-in); }
+.rcard-auto-label { margin: 0 0 4px; font-size: .8rem; font-weight: 700; color: var(--text-mute); }
+.rcard-auto ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: .95rem; }
+.rcard-auto li { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 2px 10px; }
+.rcard-ev { font-size: .85rem; color: var(--text-mute); padding-top: .1em; }
+.rcard-out { grid-column: 2; }
+.rcard-empty { margin: 0; font-size: .95rem; color: var(--text-mute); }
+.rcard-q { display: block; margin: 12px 0 6px; font-weight: 700; }
+.rcard-input { display: block; width: 100%; min-height: 7.8em; box-sizing: border-box; font: inherit; line-height: 1.6; padding: 10px 12px; border: 1px solid #7C8B89; border-radius: var(--radius-in); background: #fff; color: var(--text); resize: vertical; }
+.rcard-count { margin: 4px 0 0; text-align: right; font-size: .8rem; color: var(--text-mute); }
+.print-only { display: none; }
+.card-foot .actions { margin-top: 24px; }
+.card-foot p { margin: 8px 0 0; }
+.card-need { font-weight: 700; }
+@media (max-width: 480px) {
+  .rcard { padding: 16px 14px; }
+  .rcard-meta { grid-template-columns: 1fr; }
+  .rcard-auto li { grid-template-columns: 1fr; gap: 0; }
+  .rcard-out { grid-column: 1; }
+}
+/* 인쇄(= PDF로 저장): A4 세로 한 장, 흰 바탕 검은 글자. 카드만 남기고 버튼·안내·지도·메뉴는 숨긴다.
+   textarea 대신 같은 글을 문단(.rcard-answer)으로 찍는다(비우면 '작성 안 함'). 세 칸을 200자씩 다 채워도 한 장(tests/ai-privacy-browser.mjs c). */
+@media print {
+  @page { size: A4 portrait; margin: 14mm; }
+  html, body { background: #fff !important; color: #000 !important; }
+  body { font-size: 9.5pt; line-height: 1.45; }
+  * { box-shadow: none !important; text-shadow: none !important; }
+  .skip, .notice, .stage, .overlay, .warning, .finale, .no-print, .rcard-input, .rcard-count { display: none !important; }
+  .print-only { display: block; }
+  .app, body[data-view] .app { max-width: none; margin: 0; padding: 0; }
+  .rcard { margin: 0; padding: 0; border: 0; border-radius: 0; }
+  .rcard-game { color: #000; font-size: 9pt; }
+  .rcard h1 { margin: 0 0 5pt; font-size: 15pt; }
+  .rcard-meta { grid-template-columns: 1fr 1.3fr auto; gap: 2pt 12pt; padding-bottom: 6pt; border-bottom: 1px solid #000; }
+  .rcard-fact b { white-space: nowrap; }
+  .rcard-field, .rcard-fact { min-height: 0; gap: 4pt; }
+  .rcard-field > span, .rcard-fact > span { width: auto; font-size: 8.5pt; color: #333; }
+  .rcard-field input { min-height: 0; padding: 0 2pt; border: 0; border-bottom: 1px solid #000; border-radius: 0; font-weight: 700; }
+  .rcard-topic { padding: 7pt 0 2pt; break-inside: avoid; page-break-inside: avoid; }
+  .rcard-topic + .rcard-topic { margin-top: 5pt; border-top: 1px solid #999; }
+  .rcard-topic h2 { margin: 0 0 4pt; font-size: 11pt; }
+  .rcard-num { color: #000; }
+  .rcard-auto { padding: 4pt 7pt; background: none; border: 1px solid #999; border-radius: 4pt; }
+  .rcard-auto-label { margin: 0 0 1pt; font-size: 8pt; color: #333; }
+  .rcard-auto ul { gap: 1pt; font-size: 8.5pt; }
+  .rcard-auto li { grid-template-columns: 9.5em minmax(0, 1fr); gap: 0 6pt; }
+  .rcard-out { grid-column: 2; }
+  .rcard-ev, .rcard-empty { font-size: 8pt; color: #333; }
+  .rcard-q { margin: 6pt 0 3pt; }
+  .rcard-answer { margin: 0; min-height: 3.1em; padding: 4pt 7pt; border: 1px solid #000; border-radius: 4pt; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .rcard-answer.none { color: #555; }
+}
 
 /* ── 웹폰트(2026-11-02) — 예전엔 jsDelivr CSS 2개(나눔스퀘어·갈무리)를 <link>로 받아 첫 화면을 막고(느린 망에서 왕복 2번),
    나눔스퀘어는 font-display가 없어 글자가 최대 3초 안 보였다. 쓰는 굵기만 여기서 직접 선언하고 swap(시스템 글꼴로 먼저 보여 줌). 글꼴 파일은 그대로 jsDelivr. */

@@ -127,17 +127,17 @@ try {
     ok(v.filter((x) => x === 'visible').length === 1 && v[1] === 'visible', '▶ 하나 ' + v);
     await page.close();
   }
-  // P1: 엔딩 타임라인 '합성된 셀카' 날짜 = D-1
+  // P1: 엔딩 타임라인 사건 4(2026-11-10부터 'AI가 만든 가짜 춤 영상') 날짜 = D-1
   {
     const page = await open(makeRun('ep_1', 'e4'));
     await page.click('#btn-next'); await page.waitForTimeout(2500);
     const rows = await page.evaluate(() => [...document.querySelectorAll('.finale-choice')].map((e) => e.querySelector('.finale-date').textContent + '|' + e.querySelector('.finale-ev').textContent));
-    ok(rows.includes('D-1|합성된 셀카') && rows.every((r) => r.split('|')[0]), '타임라인 날짜 칸 모두 채움 ' + rows.join(', '));
+    ok(rows.includes('D-1|AI가 만든 가짜 춤 영상') && rows.every((r) => r.split('|')[0]), '타임라인 날짜 칸 모두 채움 ' + rows.join(', '));
     await page.close();
   }
   // P1: 엔딩 판정 보조값 harmed_others(엔딩 조건은 그대로)
   const st = (flags) => Object.assign(E.createState(story), { flags });
-  ok(E.evalCond('harmed_others', st({ e3: 'capture' })) && E.evalCond('harmed_others', st({ e6b: 'cap' })) && !E.evalCond('harmed_others', st({ e2post: 'group' })), 'harmed_others: 캡처 전달 2건 추가');
+  ok(E.evalCond('harmed_others', st({ e3: 'capture' })) && E.evalCond('harmed_others', st({ e6b: 'cap' })) && E.evalCond('harmed_others', st({ e2post: 'group' })), 'harmed_others: 캡처 전달 2건 추가 + 단톡방에 올린 사진(2026-11-10)');
 } finally {
   await browser.close(); server.close();
 }
