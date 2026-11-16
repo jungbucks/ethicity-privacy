@@ -14,6 +14,13 @@
    *   hurt.<인물>  내가 그 친구를 해친 적이 있음(사진·번호·캡처·가짜 영상·계정) — 피해자가 나를 위로·사과하지 않게 대사를 가른다
    *   harmed_others 내가 다른 사람의 정보를 퍼뜨린 적이 있음 — 엔딩 C·D와 에필로그에서 책임을 다룬다
    *   harm_count   내가 해친 친구 수(0~4, hurt.* 가운데 참인 개수) — 엔딩 B 판정에 쓴다(2026-11-10 플레이테스트: 여럿을 해치고 수습만 해서는 B가 아님)
+   *   overrode_wish 당사자의 뜻을 무시한 행동을 한 적이 있음 — 엔딩 A 판정에 쓴다(2026-11-13 교사 요청: A에서 '동의 2번 이상'을 빼고 이것으로).
+   *     "묻지 않았다"만으로는 해당하지 않는다(안 찍기·안 올리기·필요한 것만 전하기는 묻지 않아도 무시가 아님). 실제로 한 행동만 센다:
+   *     ㉠ 거절·비밀·삭제 요청을 어김: e2post=group|story(민준 "올리진 마" 뒤 포함) · e2fix=no(삭제 요청 넘김) · e3=capture(지호 "아무한테도 말하지 마") · e5j=jiho(그 대화를 AI 도우미에 — 2026-11-13 사건 5를 두 일로 나눠 e5j로 옮김)
+   *     ㉡ 허락이 필요한 촬영·공유·사용을 묻지 않고 함: e2shot=nocheck(자는 얼굴 촬영) · e4=forward(새봄 가짜 영상 전달) · e5=all(하늘 번호·계좌 든 단톡 통째 입력)
+   *        · e6=peek|post(하늘 계정 DM 열람·글 올리기) · e6b=cap(DM 캡처 전달) · e7=join(민준 번호를 낯선 사람에게) · e9=share(남의 이름·학교·동네·얼굴 공유)
+   *     넣지 않은 것: e1=public(내 정보) · e1b=pass(하늘이 스스로 올림) · e7=silent·e7b=none·e4b=blame·e6b=deny(행동이 아니라 방관·말 — harm_count가 맡음)
+   *       · e8=meet|crew(내 정보) · e8_response=expose(상대가 공개 게시판에 직접 쓴 계정·댓글 — 확산 수치가 맡음). 표는 README 「엔딩 A 기준(2026-11-13)」
    *   값이 { count: [조건…] }이면 참인 조건의 개수(숫자), 문자열이면 참/거짓 */
   var COMPUTED = {
     'hurt.minjun': 'e2post=story|group || e2fix=no || e7=join|silent || e7b=none',
@@ -22,7 +29,33 @@
     'hurt.haneul': 'e6=post || e6b=deny|cap',
     // 2026-11-02: 지호 대화 캡처 전달·하늘 DM 캡처 전달 추가 · 2026-11-10: 28명 단톡방에 올린 사진(e2post=group)도 퍼뜨린 것(엔딩 판정과 무관, 책임 문단만)
     harmed_others: 'e4=forward || e6=post || e7=join || e9=share || e2post=story|group || e3=capture || e6b=cap',
-    harm_count: { count: ['hurt.minjun', 'hurt.saebom', 'hurt.jiho', 'hurt.haneul'] }
+    harm_count: { count: ['hurt.minjun', 'hurt.saebom', 'hurt.jiho', 'hurt.haneul'] },
+    overrode_wish: 'e2shot=nocheck || e2post=group|story || e2fix=no || e3=capture || e4=forward || e5=all || e5j=jiho || e6=peek|post || e6b=cap || e7=join || e9=share',
+
+    /* 회복 A(2026-11-14 교사 요청): '제한적인 실수 뒤 그 사건에 맞게 끝까지 수습한 경로'도 A. 예방 A(위 조건)는 그대로.
+     *   slip.<사건> = 회복할 수 있는 실수 — 묻지 않아서 한 일이고(상대가 분명히 거절·비밀로 한 것을 어긴 게 아님) 남의 안전을 위협하지 않은 것
+     *     e2 묻지 않고 찍음(반 단톡방까지) · e5 친구 번호가 든 단톡을 AI에 통째로 · e6 공용 PC에서 하늘이 DM 열람 · e7 번호 장난 옆에서 가만히 있음(방관)
+     *   fix.<사건> = 그 사건에 맞는 수습(다른 사건의 수습·도움 점수로 대신할 수 없다)
+     *     e2 내리고 저장한 사람에게도 지워 달라고 부탁(e2fix=all — 사과만 하고 내린 sorry는 사본 회수 요청이 없어 부족)
+     *     e5 대화 지우고 기록 설정 확인(e5fix=del) · e6 캡처 없이 로그아웃하고 하늘이에게 알림(e6b=stop) · e7 글을 지우게 하고 민준이와 선생님께(e7b=help — 지우라고만 한 del은 부족)
+     *     게임에 없는 행동은 수습으로 치지 않는다. 묻지 않고 찍은 뒤 올리기 전에 물어본 경로(e2post=ask)는 2026-11-14부터 사진을 지우는 장면(c1_e2_k)이 생겼고,
+     *       거기서 실제로 지웠을 때만(e2photo=del) 수습 — 전에는 그 행동이 없어 올린 뒤 지운 경로보다 낮은 엔딩이 나왔다(평가 역전)
+     *   grave_harm = 회복 A로 올라갈 수 없는 일: 거절·비밀·삭제 요청을 어김(e2 "올리진 마" 뒤 올림·e2fix=no·e3 capture·e5j jiho) · 학교 밖 공개(e2post=story)
+     *     · 남을 위험하게 함(e4 forward·e6 post·e7 join·e9 share — seriousSplit '다른 사람을 위험하게 한 일') · 같은 사건에서 거듭 침해(e6b=cap) · 수습 거절·피해자 탓(e6b=deny·e7b=none·e4b=blame)
+     *   recovered = 실수한 사건이 정확히 하나(같은 친구라도 사건이 둘이면 둘 — 민준 사진 + 번호 방관) + 그 사건 수습 완료 + grave_harm 없음
+     *   피해 기록(hurt.*·harm_count·harmed_others)과 믿음 상한은 그대로다 — 회복 A가 피해를 지우지 않는다. 표·근거는 README 「엔딩 A 회복 경로(2026-11-14)」 */
+    'slip.e2': 'e2shot=nocheck && e2post!=story',
+    'slip.e5': 'e5=all',
+    'slip.e6': 'e6=peek',
+    'slip.e7': 'e7=silent',
+    'fix.e2': 'e2fix=all || e2post=ask && e2photo=del', // 2026-11-14: 올리기 전에 물어본 경로도 찍어 둔 사진을 실제로 지우면(c1_e2_k del) 수습 — 지우지 않으면(kept·옛 저장) 그대로 수습 아님
+    'fix.e5': 'e5fix=del',
+    'fix.e6': 'e6b=stop',
+    'fix.e7': 'e7b=help',
+    slip_count: { count: ['slip.e2', 'slip.e5', 'slip.e6', 'slip.e7'] },
+    slip_fixed: 'slip.e2 && fix.e2 || slip.e5 && fix.e5 || slip.e6 && fix.e6 || slip.e7 && fix.e7',
+    grave_harm: 'e2shot=asked && e2post=group || e2post=story || e2fix=no || e3=capture || e4=forward || e4b=blame || e5j=jiho || e6=post || e6b=cap|deny || e7=join || e7b=none || e8=crew || e9=share', // e8=crew(2026-11-14 교사 결정): 친구들을 모아 같이 나가자고 한 것 = 남을 위험하게 한 일 → A 불가(예방 A는 story.js 엔딩 A 조건의 e8!=crew)
+    recovered: 'slip_count=1 && slip_fixed && !grave_harm'
   };
   function computed(key, state) {
     var c = COMPUTED[key];
@@ -117,11 +150,20 @@
   }
 
   // v2 = story.endingV2(엔딩 판정 v2) — 켜졌으면 choice.addV2도 더한다
+  // choice.when = [{ if, set?, add?, addV2? }] 조건부 효과(2026-11-13 사건 5): 기본 set을 적용한 상태로 모든 if를 먼저 판정하고,
+  //   맞는 것의 set을 덧쓰고 add(+V2면 addV2)를 기본 add와 합쳐 한 번에 더한다(합친 뒤 0 밑으로 안 내려감)
   function applyEffects(state, choice, v2) {
     var set = choice.set || {}, add = {}, k0;
-    for (k0 in (choice.add || {})) add[k0] = choice.add[k0];
-    if (v2) for (k0 in (choice.addV2 || {})) add[k0] = (add[k0] || 0) + choice.addV2[k0];
+    function sum(obj) { for (var k in (obj || {})) add[k] = (add[k] || 0) + obj[k]; }
+    sum(choice.add);
+    if (v2) sum(choice.addV2);
     Object.keys(set).forEach(function (k) { state.flags[k] = set[k]; });
+    var hits = (choice.when || []).filter(function (w) { return evalCond(w.if, state); });
+    hits.forEach(function (w) {
+      Object.keys(w.set || {}).forEach(function (k) { state.flags[k] = w.set[k]; });
+      sum(w.add);
+      if (v2) sum(w.addV2);
+    });
     Object.keys(add).forEach(function (k) {
       if (k.indexOf('trust.') === 0) {
         var who = k.slice(6);
@@ -307,6 +349,36 @@
     return s.history.every(function (h) { return h && story.scenes[h.scene] && h.snap; });
   }
 
+  /* 옛 진행 옮기기(2026-11-13 사건 5를 두 일로 나눔) — 저장된 run을 불러올 때 isValidState 앞에서 한 번. 원본은 그대로(새 객체).
+   *   옛 흐름은 c2_e5_a 한 장면에서 all|min|jiho|anon 중 하나 → 지호 일(jiho|anon)은 새 플래그 e5j와 새 장면 c2_e5_j로.
+   *   ① state·기록 snap의 flags.e5 = jiho|anon → flags.e5j로 옮기고 e5는 지움(안내문 일은 안 한 것으로)
+   *   ② 기록의 c2_e5_a#jiho|anon → c2_e5_j(선택 경로 화면이 '내 선택'을 찾게) ③ c2_e5_a에서 jiho|anon 반응 중이면 c2_e5_j 반응으로
+   *   수치는 옛 선택 때 이미 더해졌으므로 건드리지 않는다(새 흐름의 지호 일 보정은 고를 때만 일어난다). 이야기에 c2_e5_j가 없으면 아무것도 안 함 */
+  var LEGACY_E5J = { jiho: 1, anon: 1 };
+  function migrate(story, state) {
+    if (!state || typeof state !== 'object' || !story.scenes || !story.scenes.c2_e5_j) return state;
+    function moveFlag(s) {
+      if (s && s.flags && LEGACY_E5J[s.flags.e5]) { s.flags.e5j = s.flags.e5; delete s.flags.e5; return true; }
+      return false;
+    }
+    var touched = !!(state.flags && LEGACY_E5J[state.flags.e5]) ||
+      (Array.isArray(state.history) && state.history.some(function (h) {
+        return h && ((h.scene === 'c2_e5_a' && LEGACY_E5J[h.choice]) || (h.snap && h.snap.flags && LEGACY_E5J[h.snap.flags.e5]));
+      }));
+    if (!touched) return state;
+    var next = clone(state);
+    moveFlag(next);
+    if (next.scene === 'c2_e5_a' && LEGACY_E5J[next.reaction]) next.scene = 'c2_e5_j';
+    // 지나온 장면에도 c2_e5_j를(선택 경로 화면이 '이번에 지나지 않은 장면'으로 함께 보이지 않게, 최종 검토 2026-11-14)
+    if (Array.isArray(next.visited) && next.visited.indexOf('c2_e5_j') < 0 && (next.scene === 'c2_e5_j' || (next.history || []).some(function (h) { return h && h.scene === 'c2_e5_j'; }))) next.visited.push('c2_e5_j');
+    (next.history || []).forEach(function (h) {
+      if (!h) return;
+      if (h.scene === 'c2_e5_a' && LEGACY_E5J[h.choice]) h.scene = 'c2_e5_j';
+      moveFlag(h.snap);
+    });
+    return next;
+  }
+
   /* 특별 수업 「우리 교실에 AI CCTV를 단다면」(2026-11-10): 플래그만 쓰고 엔딩·수치와 무관.
    *   specialClassNotes = 고른 보기마다 선생님 반문 한 줄(순서: 알림 범위 → 보관 → 열람 → 설치 안 함), specialClassRows = 결과 칸 줄(설정된 것만)
    *   지금 보기에 없는 값(예: 배포 전 로컬 저장의 ccxPurpose = incident|guide|ai)은 그 줄만 '—'로 비워 보인다(unknown: true) — 화면이 깨지지 않게 */
@@ -346,6 +418,7 @@
     specialClassRows: specialClassRows,
     eventOutcomes: eventOutcomes,
     isValidState: isValidState,
+    migrate: migrate,
     clone: clone
   };
   root.PrivacyEngine = api;

@@ -376,6 +376,7 @@
       cast: [who('minjun', 'classroom', 29, 11, 'up', { pose: 'sleep' }), who('haneul', 'classroom', 26, 8, 'right'),
         who('saebom', 'classroom', 12, 8, 'down'), who('jiho', 'classroom', 10, 9, 'down')] },
     c1_e2_b: { place: 'room', tint: 'night', card: '그날 밤 · 내 방', cast: [] },
+    c1_e2_k: { place: 'room', tint: 'night', cast: [] }, // 2026-11-14 찍어 둔 사진(c1_e2_b에 이어 같은 자리)
     c1_e2_d: { place: 'road', tint: 'day', card: 'D-2 아침 · 등굣길', cast: [] },
     c1_e3_a: { place: 'room', tint: 'night', me: BED_ME, cast: [] }, // 2026-11-03 플레이테스트: 이 걷기도 침대 조사로 열린다
     // 2026-11-09 지시서 C1: 개인톡을 보내는 사람은 그 무대에 세우지 않는다(바로 옆에 서서 개인톡을 보내는 것처럼 보였다). 대사는 그대로.
@@ -388,6 +389,8 @@
       bubbles: [{ on: '누가 만든 거래', who: 'haneul', text: '신기하지?' }, { on: '나 보낸 거 지울게', who: 'haneul', text: '…' }] },
     c2_e4_b: { place: 'road', tint: 'evening', card: '그날 저녁 · 집에 가는 길', cast: [] },
     c2_e5_a: { place: 'room', tint: 'night', me: ATDESK, pcOn: true, cast: [] },
+    c2_e5_j: { place: 'room', tint: 'night', me: ATDESK, pcOn: true, cast: [] }, // 2026-11-13 사건 5 일 2(지호 고민)
+    c2_e5_agent: { place: 'room', tint: 'night', me: ATDESK, pcOn: true, cast: [] }, // 2026-11-13 사건 5 AI 에이전트 제안
     c2_e5_b: { place: 'room', tint: 'night', me: ATDESK, pcOn: true, cast: [] },
     c2_e6_a: { place: 'library', tint: 'day', cast: [who('friend', 'library', 23, 8, 'right')] },
     c2_e6_b: { place: 'library', tint: 'day', cast: [who('friend', 'library', 23, 8, 'right')] },
