@@ -282,6 +282,10 @@
   function needLook() {
     if (playerLook()) return false;
     $('look-msg').hidden = false;
+    // 2026-11-18 플레이테스트 P2: '먼저 주인공을 골라 주세요.'와 아래 '위에서 주인공을 골라 주세요.'가 함께 떴다 → 아래 줄의 같은 말은 뺀다(손상 안내는 남김)
+    var note = $('player-note');
+    if (player.source === 'damaged') note.textContent = '공통 캐릭터 정보를 읽지 못해 이 게임에서 고른 주인공으로 시작해요.';
+    else note.hidden = true;
     var first = document.querySelector('input[name=look]');
     if (first) first.focus();
     return true;
@@ -313,6 +317,7 @@
     renderPlayerChip();
     var nameField = $('name-field');
     nameField.hidden = player.source === 'stored';
+    $('name-note').hidden = nameField.hidden; // 실제 정보를 적는 곳 안내 한 줄(2026-11-18 P0-1, 옛 '게임 안내'에서) — 이름 칸이 있을 때만
     if (!nameField.hidden && document.activeElement !== $('name-input')) $('name-input').value = settings.nickname;
 
     var run = progress.run;
@@ -348,6 +353,19 @@
     if (!Array.isArray(v.title)) return v.title || '';
     var hit = v.title.filter(function (t) { return E.evalCond(t.if, st); })[0];
     return hit ? hit.title : '';
+  }
+  // 2026-11-18 플레이테스트 P0-4: 장면이 열릴 때 그 장면 첫 시각 줄(sys)로 HUD 날짜·시각(#m-time)도 맞춘다(옛: 걷기 때 시각이 남아 'D-2 · 하교 시간' 아래에 'D-1 · 오전 8:05' 대화).
+  //   '축제까지 D-4 · …'은 앞말을 떼고, 날짜 없는 시각('저녁 8:30')은 지금 날짜 칸을 이어 붙인다. 시각 줄이 없는 장면은 그대로 둔다(앞 장면에 이어짐)
+  function hudTime(scene, state) {
+    var line = E.visibleLines(story, scene.lines, state).filter(function (l) { return l.who === 'sys'; })[0];
+    if (!line) return;
+    var t = plain(String(line.text)).replace(/^축제까지\s*/, '').trim();
+    if (!/(오전|오후|저녁|밤|아침|새벽|\d:\d)/.test(t)) return; // 시각이 아닌 sys 줄(알림 등)은 건드리지 않는다
+    if (t.indexOf(' · ') < 0) {
+      var day = String($('m-time').textContent || '').split(' · ')[0];
+      if (day && /^(D-\d+|축제|다음)/.test(day)) t = day + ' · ' + t; // '그날 밤' 뒤 '오전 9:30'(다음 날 아침)에는 붙이지 않는다
+    }
+    $('m-time').textContent = t;
   }
   function preChoiceState(run) {
     // 반응 표시 중이면, 장면 대사는 선택 전 상태로 판정한다
@@ -819,6 +837,7 @@
     var run = progress.run;
     var scene = story.scenes[run.scene];
     $('g-chap').textContent = chapterLabel(scene.chapter);
+    hudTime(scene, preChoiceState(run));
     $('btn-undo').disabled = !run.history.length;
     window.PrivacyTalk.close(); // 앞 장면 대화창이 남아 선택지를 가리지 않게
     var device = deviceOf(run.scene);
@@ -855,7 +874,7 @@
       if (animate && st.card) cgShow(null); // 컷 카드 뒤로 앞 장면 그림이 비치지 않게
       stagedScene = run.scene;
       cutPending = true;
-      ready = window.PrivacyMap.stage(st, { card: animate && st.card ? st.card : null, focus: function () { return stageFocus(device); },
+      ready = window.PrivacyMap.stage(st, { device: device, card: animate && st.card ? st.card : null, focus: function () { return stageFocus(device); },
         time: (E.visibleLines(story, scene.lines, preChoiceState(run)).filter(function (l) { return l.who === 'sys'; })[0] || {}).text || st.card }); // tint 없는 무대의 시간대
     }
     ready.then(function () {
@@ -912,6 +931,9 @@
         var b = el('button', 'choice');
         b.type = 'button';
         b.setAttribute('data-choice', c.id);
+        var mark = el('span', 'choice-mark', '▶'); // 고를 줄 표시 — 화면 읽기에서 숨김(버튼 이름 = 선택지 문장, 2026-11-18 P1-5)
+        mark.setAttribute('aria-hidden', 'true');
+        b.appendChild(mark);
         var num = el('span', 'num', String(i + 1));
         num.setAttribute('aria-hidden', 'true');
         b.appendChild(num);
@@ -975,6 +997,9 @@
   /* ── 맵 ─────────────────────────── */
   function renderMap() {
     var run = progress.run;
+    // 2026-11-18 플레이테스트 P0-4: 걷는 동안에도 장 이름 = 이번 걷기가 이어지는 장면의 장(옛: 앞 장면의 장이 남아 '프롤로그'로 집에 감)
+    var target = story.scenes[run.mapTarget || run.scene]; // 걷기 상태의 scene은 앞 장면 그대로 — 갈 곳은 mapTarget
+    if (target) $('g-chap').textContent = chapterLabel(target.chapter);
     $('btn-undo').disabled = !run.history.length;
     $('stage').classList.remove('dim');
     window.PrivacyTalk.close();
@@ -1070,7 +1095,13 @@
       }
       if (plan) { detail.appendChild(plan); more.hidden = false; }
     } else if (done) {
-      var lines = done.events.map(function (e) { return E.eventOutcomes(story, e, run)[0]; }).filter(Boolean);
+      // 사건마다 첫 결과 문장 + 'recap' 표시가 붙은 결과(예: 사진이 반 단톡방 28명에게 퍼졌다 — 2026-11-18 플레이테스트 P2)
+      var lines = [];
+      done.events.forEach(function (e) {
+        var outs = E.eventOutcomes(story, e, run);
+        if (outs[0]) lines.push(outs[0]);
+        story.events[e].outcomes.forEach(function (o) { if (o.recap && E.evalCond(o.if, run) && lines.indexOf(o.text) < 0) lines.push(o.text); });
+      });
       if (lines.length) {
         sum.appendChild(el('h2', 'c-label', '이번 장에서 달라진 것'));
         var flat = lines.filter(function (t) { return window.PrivacyEmph.has(t); }).length > 2;
@@ -1600,7 +1631,12 @@
     });
     $('btn-start-path').addEventListener('click', function () { renderPath('v-start'); });
     $('btn-start-reflect').addEventListener('click', function () { renderReflect('v-start'); });
-    $('btn-chapter-go').addEventListener('click', function () { setRun(E.advance(story, progress.run)); routeRun(true); });
+    $('btn-chapter-go').addEventListener('click', function () {
+      setRun(E.advance(story, progress.run));
+      var next = progress.run && story.scenes[(progress.run.screen === 'map' && progress.run.mapTarget) || progress.run.scene]; // 2026-11-18 P0-4: 누르는 순간 다음 장 이름으로
+      if (next) $('g-chap').textContent = chapterLabel(next.chapter);
+      routeRun(true);
+    });
     $('c-more').querySelector('summary').addEventListener('click', function () { if (!$('c-more').open) chapterPin(); }); // 열기 직전에 카드 위쪽 고정
     var chapterW = window.innerWidth; // 폭이 바뀌면(회전 등) 고정을 풀어 다시 가운데로. 높이만 조금 바뀌는 것(휴대폰 주소창)은 그대로 — 단, 고정한 위쪽이 화면 절반을 넘으면 풀기
     window.addEventListener('resize', function () {
@@ -1662,6 +1698,9 @@
         var storedSet = S.readJSON(S.KEYS.settings).value;
         var hadName = !!settings.nickname || !!(storedSet && typeof storedSet === 'object' && storedSet.nickname);
         if (hadName) { settings.nickname = ''; $('name-input').value = ''; refreshName(); S.scrub(S.KEYS.settings, settings); }
+        // 2026-11-18 보안 검토: 저장소를 읽지 못해(처음 열 때부터 막힘 등) 적힌 이름을 모르더라도 이름 정리는 늘 예약한다 — 읽히게 되면 설정의 별명 칸만 비우고 확인한다
+        //   (소리·속도·주인공 모습 설정과 공통 ethicity.player는 그대로). 확인 전에는 밀린 것으로 남아 '지웠다'고 하지 않는다(checkRemoveFailure)
+        S.forget(S.KEYS.settings, 'nickname');
         checkRemoveFailure(true);
         progress = { v: 1, run: null, explored: {}, endingsSeen: [], pos: null };
         renderStart();

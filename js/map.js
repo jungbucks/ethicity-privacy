@@ -145,7 +145,7 @@
     trig = WD.triggers[targetId];
     WD.setWarp(trig.warp || null); // 특별 수업 걷기만 마당→교실 문이 특별실로(2026-11-10), 다른 걷기는 되돌림
     cast = trig.cast.slice();
-    passGreeted = {}; talked = {}; talkMarks = []; lastLabel = '';
+    passGreeted = {}; talked = {}; looked = {}; talkMarks = []; lastLabel = '';
     streak = { who: null, n: 0 }; guideUntil = 0;
     arrived = null; stepHold = 0; nudge = null; walkTint = null;
     blocked = {};
@@ -170,6 +170,7 @@
     mode = 'walk'; stageInfo = null; focus = null; gen++; camS = null;
     lastArea = '';
     updateArea();
+    updateLabel(); // 지도 설명도 새 걷기의 목적지로 바로(P1-10)
     // 첫 안내: 터치 기기에서 조이스틱이 보이면 조이스틱으로 안내(world.js 글은 키보드·탭 기준)
     curHint = trig.hint && joyShown() ? '왼쪽 아래 조이스틱이나 화면을 눌러 걸어요' : trig.hint || '';
     say(curHint);
@@ -186,6 +187,7 @@
     opts = opts || {};
     WD.setWarp(null); // 장면 무대에선 워프 없음
     mode = 'stage'; stageInfo = st; trig = null; targetId = null; focus = opts.focus || null; gen++; camS = null;
+    stageLabel(opts.device); // 장면 중 지도 설명 = 지금 보는 화면(P1-10)
     stageTint = st.tint || WD.timeTint(opts.time); // tint가 없는 무대는 장면 첫 시각 줄(아침·오후·저녁·밤)로
     cast = st.cast.slice(); blocked = {}; nudge = null; walkTint = null; arrived = null; stepHold = 0;
     cast.forEach(function (c) { loadSprite(c.who, 'char_' + c.who + '.png', window.PrivacyCast.walk(c.who)); });
@@ -304,7 +306,7 @@
   function updateArea() {
     var a = WD.areaName(me.x, me.y);
     if (a !== lastArea) { lastArea = a; $('m-area').textContent = a ? '📍 ' + a : ''; if ($('m-say').textContent) sayLayout(); } // HUD 높이가 바뀌면 안내 한 줄도 따라 내려감
-    if (mode === 'walk' && trig) { var mt = missionText(); if (mt !== lastMission) { lastMission = mt; $('m-mission').textContent = mt; if ($('m-say').textContent) sayLayout(); } }
+    if (mode === 'walk' && trig) { var mt = missionText(); if (mt !== lastMission) { lastMission = mt; $('m-mission').textContent = mt; updateLabel(); if ($('m-say').textContent) sayLayout(); } } // 지도 설명도 같이(P1-10)
     // 걸어서 들어간 장소(장면 그림) — 조작 안내를 처음 두 장소에서만 보이게(app.js onPlace, 2026-11-09 지시서 C5)
     var sc = mode === 'walk' ? WD.sceneAt(me.x) : null;
     if (sc && sc.id !== lastPlace) { lastPlace = sc.id; if (o.onPlace) o.onPlace(sc.id); }
@@ -404,7 +406,8 @@
         guideUntil = performance.now() + 6000;
       });
     } else {
-      talk([{ who: null, name: null, text: WD.lookFor(n.ob, trig && trig.time) }]); // 매점처럼 날마다 바뀌는 문구
+      looked[n.ob.id] = true; // 한 번 본 사물(P1-9)
+      talk([{ who: null, name: null, text: WD.lookFor(n.ob, trig && trig.time) }]).then(function () { if (active && mode === 'walk') updateHint(); }); // 매점처럼 날마다 바뀌는 문구
     }
   }
   // 2026-11-03 플레이테스트: 스프라이트 폭이 한 칸보다 넓어(약 1.3칸) 바로 옆 칸 사람과 말하면 몸이 반쯤 겹쳤다 →
@@ -480,7 +483,15 @@
   function pick() {
     var ns = neighbors();
     var tapped = tapWant && ns.filter(function (n) { return tapWant.npc ? n.type === 'npc' && n.c.who === tapWant.npc : n.type === 'obj' && n.ob.id === tapWant.obj; })[0];
-    return tapped || ns.filter(isTarget)[0] || ns.filter(function (n) { return n.type === 'npc' && talkReason(n.c); })[0] || ns[0] || doorNear();
+    return tapped || ns.filter(isTarget)[0] || ns.filter(function (n) { return n.type === 'npc' && talkReason(n.c); })[0] || wayDoor()
+      || ns.filter(function (n) { return n.type !== 'obj' || !looked[n.ob.id]; })[0] || doorNear();
+  }
+  // 2026-11-18 플레이테스트 P1-9: 축제 부스에서 할 일이 '집에 가서 쉬기'인데 큰 버튼이 '옆 반 천막 조사하기'가 되어, 누르면 같은 말만 되풀이 →
+  //   지금 할 일 쪽 출구가 바로 옆이면 사물보다 먼저. 한 번 조사한 사물(looked)은 이 걷기 구간에서 다시 큰 버튼을 차지하지 않는다
+  var looked = {};
+  function wayDoor() {
+    var d = doorNear(), ex = d && exitToward();
+    return d && ex && d.door.to[0] === ex.door.to[0] && d.door.to[1] === ex.door.to[1] ? d : null;
   }
   // 바로 옆(바라보는 쪽 먼저)에 출입구 칸이 있으면 { type:'door', door, dir } — 말 걸기 버튼이 '○○ 가기'가 된다
   //   2026-11-03 플레이테스트: 방금 지나온 출입구(arrived)는 고르지 않는다 — 도착하자마자 큰 버튼이 '교실로 가기'처럼 되돌아가는 문을 가리켜,
@@ -530,8 +541,14 @@
   }
   // 지도 설명(aria-label): 목적지와 ?가 뜬 사람을 글로
   var lastLabel = '';
+  // 2026-11-18 플레이테스트 P1-10: 학교 가는 중 '목적지: 새봄', 밤에 집에서 '목적지: 민준'처럼 설명이 늦게 바뀌었다 →
+  //   걷기를 시작할 때·할 일이 바뀔 때 바로 다시 쓰고, 장면 무대(stage)에서는 목적지 대신 지금 보는 화면(stageLabel)
+  function stageLabel(device) {
+    var label = '학교와 마을 지도. ' + (device === 'phone' ? '휴대폰 화면을 보는 중' : device === 'monitor' ? '컴퓨터 화면을 보는 중' : '이야기 장면을 보는 중') + '이에요.';
+    if (canvas && label !== lastLabel) { lastLabel = label; canvas.setAttribute('aria-label', label); }
+  }
   function updateLabel() {
-    if (!trig || !canvas) return;
+    if (!trig || !canvas || mode !== 'walk') return;
     var sc = WD.sceneAt(me.x);
     var names = cast.filter(function (c) { return WD.sceneAt(c.x) === sc && c.who !== trig.target.npc && talkReason(c); })
       .map(function (c) { return o.story.characters[c.who].name; });
@@ -596,7 +613,7 @@
     var tx = Math.floor((e.clientX - r.left + cam.x) / T), ty = Math.floor((e.clientY - r.top + cam.y) / T);
     var pin = pinAt(e.clientX - r.left, e.clientY - r.top); // 목적지 핀(사람이 아닌 사물·출입구)을 눌렀으면 그 자리로
     if (pin) { tx = pin.tx; ty = pin.ty; }
-    var npc = cast.filter(function (c) { return c.x === tx && c.y === ty; })[0] || (pin ? null : markAt(e.clientX - r.left, e.clientY - r.top));
+    var npc = cast.filter(function (c) { return c.x === tx && c.y === ty; })[0] || (pin ? null : markAt(e.clientX - r.left, e.clientY - r.top) || bodyAt(e.clientX - r.left, e.clientY - r.top));
     var ob = WD.DOORS[tx + ',' + ty] ? null : WD.objectAt(tx, ty) || WD.OBJECTS.filter(function (b) { return tx >= b.x && tx < b.x + b.w && ty >= b.y && ty < b.y + b.h; })[0];
     var p;
     if (npc || ob) {
@@ -616,6 +633,13 @@
     if (!p.length) { if (actOnArrive) { actOnArrive = false; faceBox(npc ? { x: npc.x, y: npc.y, w: 1, h: 1 } : ob); act(); } return; }
     path = p;
     if (!me.moving) tryStep(path.shift());
+  }
+  // 2026-11-18 플레이테스트 P1-6: 사람 그림(몸 2.24칸)의 윗부분을 누르면 그 사람 칸이 아니라 위 빈 칸으로 걸어 들어가 몸이 겹쳐 섰다 →
+  //   그려진 몸(머리 꼭대기~발, 마지막 화면 기준)을 누르면 그 사람. 여럿이 겹치면 앞(발이 아래)에 선 사람. 나는 빼고, 엎드린 사람(몸 정보 없음)은 칸으로만
+  function bodyAt(x, y) {
+    var hit = lastBodies.filter(function (b) { return b.who !== 'me' && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; })
+      .sort(function (a, b) { return b.y1 - a.y1; })[0];
+    return hit ? cast.filter(function (c) { return c.who === hit.who; })[0] || null : null;
   }
   // 물음표 말풍선을 눌러도 그 사람에게 가서 말 걸기(머리 위 그림이라 사람 칸보다 위에 있음)
   //   화면 밖·HUD 밑이라 옮겨 그린(off) 목적지 인물 ?도 그려진 자리를 누르면 그 사람에게(2026-11-02 모바일: 옮긴 ?를 누르면 그 아래 칸으로 걷기만 했다)
@@ -888,7 +912,7 @@
   // 가리는 상자들의 가장자리로 캔버스를 나눈 사각형 중, 어떤 상자와도 겹치지 않는 가장 넓은 것(넓은 화면: 폰 오른쪽·선택 상자 위 / 휴대폰: 아래 시트 위).
   var OCCLUDERS = ['#g-phone', '#g-dock', '#talk'];
   // 걷기 중 지도를 가리는 것: 위 HUD, 아래 말 걸기 버튼 줄, 조이스틱 받침(기본 자리) — 주인공·끝 줄(출구 매트)이 그 밑에 숨지 않게
-  var WALK_OCCLUDERS = ['#hud', '#v-map .map-controls'];
+  var WALK_OCCLUDERS = ['#hud', '#v-map .map-controls', '#v-map .map-help']; // 2026-11-18 플레이테스트 P2: 조작 안내 띠가 떠 있는 동안(처음 두 장소) 띠 높이만큼 아래 여백 — 첫 지도 출구가 띠에 반쯤 가렸다
   function freeRect(sel, extra) {
     var cr = canvas.getBoundingClientRect(), boxes = [], xs = [0, viewW], ys = [0, viewH];
     function add(r) {
@@ -1101,6 +1125,27 @@
     if (fadeUntil > t) { ctx.fillStyle = 'rgba(15,20,18,' + Math.min(1, (fadeUntil - t) / 260) + ')'; ctx.fillRect(0, 0, viewW, viewH); }
     if (mode === 'walk') { drawTalkMarks(t); drawMarker(t); drawGuide(t); }
     drawBubble(t);
+    retagOverTails();
+  }
+  // 2026-11-18 플레이테스트 P1-6: 말 건 사람의 말풍선 꼬리가 바로 옆 내 이름표를 덮었다(말풍선 몸은 이름표를 피해 위로 오르지만 꼬리는 머리까지 내려온다) →
+  //   꼬리가 지나가는 자리의 남의 이름표는 말풍선 뒤에 한 번 더 그려 글자가 보이게(꼬리가 이름표 뒤로 지나간다)
+  function retagOverTails() {
+    lastBubbles.forEach(function (b) {
+      var tl = b.tail;
+      if (!tl) return;
+      var x0 = Math.min(tl.x0, tl.x1) - 8, x1 = Math.max(tl.x0, tl.x1) + 8, y0 = Math.min(tl.y0, tl.y1), y1 = Math.max(tl.y0, tl.y1);
+      lastTags.forEach(function (r) {
+        if (r.who === b.who || !(r.x < x1 && x0 < r.x + r.w && r.y < y1 && y0 < r.y + r.h)) return;
+        ctx.save(); if (r.dim) ctx.globalAlpha = 0.5;
+        ctx.font = '600 ' + r.fs + 'px sans-serif';
+        ctx.fillStyle = r.me ? 'rgba(15,118,110,0.92)' : 'rgba(22,32,31,0.72)';
+        roundRect(r.x, r.y, r.w, r.h, 4); ctx.fill();
+        ctx.fillStyle = '#FFFFFF'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(r.label, r.x + r.w / 2, r.y + r.h / 2);
+        ctx.restore();
+        r.overTail = true;
+      });
+    });
   }
   // ?debug=1 · ?debug=grid: 걷는 칸(초록)·막힘(빨강)·출입구(파랑)·조사 지점(노랑)·사람이 막은 칸(보라)을 그림 위에 겹쳐 본다.
   //   목적지 쪽 출구는 하늘색 테두리, 내 칸은 흰 테두리, 목적지는 분홍 테두리(교사·작업자 눈 확인용)
@@ -1283,7 +1328,7 @@
       ctx.fillText(t.label, r.x + w / 2, r.y + h / 2);
       ctx.restore();
     });
-    lastTags = placed.map(function (r, i) { return { x: r.x, y: r.y, w: r.w, h: r.h, me: !!tags[i].me, label: tags[i].label, who: tags[i].who, cx: tags[i].cx, dim: !!r.dim }; });
+    lastTags = placed.map(function (r, i) { return { x: r.x, y: r.y, w: r.w, h: r.h, me: !!tags[i].me, label: tags[i].label, who: tags[i].who, cx: tags[i].cx, dim: !!r.dim, fs: fs }; });
     lastBodies = tags.filter(function (q) { return q.body; }).map(function (q) { return { who: q.who, x0: q.body.x0, x1: q.body.x1, y0: q.body.y0, y1: q.body.y1 }; });
     tags = [];
   }
@@ -1436,7 +1481,7 @@
     //   가로만 도형 반지름 + 4px(핀 끝이 화면 옆 끝에서 10px 안, 옆 방향 화살표 T×0.45+6도 화면 안). 위아래는 safeArea가 이미 HUD·버튼 줄에서 8px 떨어져 있어 반지름만
     var pad = iconSize / 2 + 4;
     mx = Math.max(sa.left + pad, Math.min(sa.right - pad, mx));
-    my = Math.max(sa.top + iconSize / 2, Math.min(sa.bottom - iconSize / 2, my));
+    my = Math.max(sa.top + iconSize / 2, Math.min(sa.bottom - Math.max(iconSize, ms.h) / 2, my)); // 2026-11-18 플레이테스트 P2: 아래는 핀 전체 높이만큼 — 첫 지도(내 방) 출구 핀이 아래 안내 띠에 반쯤 가렸다
     var jr = joy.rest && !$('joy').hidden ? joy.rest : null; // 조이스틱 받침(기본 자리)에 걸리면 그 위로
     if (jr && mx + ms.w / 2 > jr.x0 && mx - ms.w / 2 < jr.x1 && my + ms.h / 2 > jr.y0 && my - ms.h / 2 < jr.y1) my = jr.y0 - ms.h / 2 - 4;
     var off = Math.abs(mx - tx0) > 2 || Math.abs(my - ty0) > 2;
@@ -1478,7 +1523,7 @@
     my = aboveTags(mx, my, ms.w, ms.h) + bob;
     var tx0 = mx, ty0 = my;
     mx = Math.max(sa.left + iconSize / 2, Math.min(sa.right - iconSize / 2, mx));
-    my = Math.max(sa.top + iconSize / 2, Math.min(sa.bottom - iconSize / 2, my));
+    my = Math.max(sa.top + iconSize / 2, Math.min(sa.bottom - Math.max(iconSize, ms.h) / 2, my)); // 2026-11-18 플레이테스트 P2: 아래는 핀 전체 높이만큼 — 첫 지도(내 방) 출구 핀이 아래 안내 띠에 반쯤 가렸다
     // 화면 위 끝에 붙어 다시 이름표에 걸리면 이름표 옆으로
     var th = tagHit(mx, my, ms.w, ms.h, markPad());
     if (th) mx = th.x + th.w + ms.w / 2 + 4 <= sa.right ? th.x + th.w + ms.w / 2 + 4 : th.x - ms.w / 2 - 4;
